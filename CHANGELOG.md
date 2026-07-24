@@ -2,7 +2,7 @@
 
 ## 0.1.0
 
-Initial release.
+Initial release. Requires herdr 0.7.4+ and Python 3.9+.
 
 - Fuzzy bar over agents, agent-less tabs, and workspaces, matched on title,
   working directory, agent name and kind, branch, workspace, and tab number.

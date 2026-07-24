@@ -56,7 +56,9 @@ description = "command bar"
 
 Reload with `herdr server reload-config`, then press `ctrl+b k`.
 
-Requires herdr 0.7.0+, Python 3.9+, macOS or Linux.
+Requires herdr 0.7.4+ (the release that added popup plugin panes), Python 3.9+
+on PATH, and macOS or Linux. Herdr refuses to install the plugin on anything
+older, so there is nothing to get wrong.
 
 ## Making it a real Cmd+K
 

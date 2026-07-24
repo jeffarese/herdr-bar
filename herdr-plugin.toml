@@ -1,7 +1,9 @@
 id = "jeffarese.bar"
 name = "Bar"
 version = "0.1.0"
-min_herdr_version = "0.7.0"
+# 0.7.4 is the first release with session-modal popup plugin panes;
+# session.snapshot (the whole model in one call) landed in 0.7.2.
+min_herdr_version = "0.7.4"
 description = "Cmd+K command bar: fuzzy-jump to any tab or agent"
 platforms = ["linux", "macos"]
 
