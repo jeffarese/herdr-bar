@@ -6,24 +6,7 @@
 session, you type a few letters of a tab, an agent, a repo or a branch, and Enter
 takes you there. Like the Slack quick switcher, for the terminal.
 
-```text
- ❯  jump to a tab or agent…    @ agents   $ shells   ! needs you
- ──────────────────────────────────────────────────────────────────────────────────────────────
- ▌ ◉ retry queue backoff                    codex · needs you │ retry queue backoff
-   ⠋ Check weekly explanation display       current · working │ ~/workspace/erestor
-   ◉ cards meaningless                web · codex · needs you │ ───────────────────────────────
-   ● library depth battery          library · @battery · done │
-   ⠋ Redesign week loading screen            claude · working │
-   ✓ migrations                       erestor · gemini · idle │ ● Ready · pacebeats
-   · server                                         pacebeats │   Capacity: 0/32 · new session…
-   · logs                                           pacebeats │
-   ◉ erestor                                needs you · space │ > the cards still read as mean…
-   ⠋ pacebeats                                working · space │
-                                                              │ ⏺ Reading src/components/WeekC…
-                                                              │   Found 3 call sites that rend…
- ──────────────────────────────────────────────────────────────────────────────────────────────
- ↑↓ move  ⏎ jump  ⇥ scope  ^o preview  esc close                                             10
-```
+![herdr-bar: type a few letters, jump to any tab or agent](assets/demo.gif)
 
 - **fuzzy search over everything you can jump to** — agents, plain tabs, and
   workspaces, matched on title, working directory, agent name and kind, branch,
