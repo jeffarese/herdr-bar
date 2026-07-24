@@ -1,0 +1,32 @@
+id = "herdr-bar"
+name = "Bar"
+version = "0.1.0"
+# 0.7.4 is the first release with session-modal popup plugin panes;
+# session.snapshot (the whole model in one call) landed in 0.7.2.
+min_herdr_version = "0.7.4"
+description = "Cmd+K command bar: fuzzy-jump to any tab or agent"
+platforms = ["linux", "macos"]
+
+# Opening the bar is a one-liner through the Herdr CLI, so the action stays a
+# shell exec instead of paying a second interpreter startup. HERDR_BIN_PATH can
+# outlive the binary it points at when Herdr is upgraded under a running
+# server, so fall back to whatever is on PATH.
+[[actions]]
+id = "open"
+title = "Open bar"
+description = "Fuzzy-jump to any tab or agent"
+contexts = ["global"]
+command = [
+  "sh",
+  "-c",
+  'herdr_bin="${HERDR_BIN_PATH:-herdr}"; [ -x "$herdr_bin" ] || herdr_bin=herdr; exec "$herdr_bin" plugin pane open --plugin herdr-bar --entrypoint bar --placement popup',
+]
+
+[[panes]]
+id = "bar"
+title = "Bar"
+description = "Fuzzy-jump to any tab or agent"
+placement = "popup"
+width = "74%"
+height = "62%"
+command = ["python3", "run.py"]

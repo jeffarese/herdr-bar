@@ -1,0 +1,12 @@
+# Lint config only -- the bar itself has no dependencies and no build step.
+#
+# The rule set is deliberately narrow: correctness (pyflakes), the pycodestyle
+# errors, and import order. The pyupgrade family stays off on purpose, because
+# the code targets Python 3.9 and uses `typing.Optional`/`%`-formatting
+# consistently throughout rather than a mix of old and new spellings.
+
+target-version = "py39"
+line-length = 100
+
+[lint]
+select = ["E", "F", "I"]
