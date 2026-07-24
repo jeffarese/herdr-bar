@@ -52,7 +52,7 @@ Then bind a key (herdr does not add keybindings for you). In your herdr
 [[keys.command]]
 key = "prefix+k"
 type = "plugin_action"
-command = "jeffarese.bar.open"
+command = "herdr-bar.open"
 description = "command bar"
 ```
 
@@ -72,7 +72,7 @@ Cmd+K, add a second binding for a chord your terminal can actually deliver —
 [[keys.command]]
 key = ["prefix+k", "ctrl+alt+k"]
 type = "plugin_action"
-command = "jeffarese.bar.open"
+command = "herdr-bar.open"
 description = "command bar"
 ```
 
@@ -127,7 +127,7 @@ matches are highlighted.
 ## Configuring
 
 Optional. Write `config.json` in the plugin config directory
-(`herdr plugin config-dir jeffarese.bar`):
+(`herdr plugin config-dir herdr-bar`):
 
 ```json
 {
@@ -159,8 +159,8 @@ Colors default to plain ANSI, so the bar follows whatever theme your terminal
 already uses.
 
 Popup size lives in herdr, not here. Override the manifest's `74%` × `62%` per
-invocation with `herdr plugin pane open --plugin jeffarese.bar --entrypoint
-bar --placement popup --width 60% --height 50%`.
+invocation with `herdr plugin pane open --plugin herdr-bar --entrypoint bar
+--placement popup --width 60% --height 50%`.
 
 ## How it works
 
@@ -188,7 +188,7 @@ ruff check .                                    # lint, if you have it
 ```
 
 `scripts/demo.py` needs no herdr server, which makes it the fastest way to work
-on the UI. `herdr plugin log list --plugin jeffarese.bar` shows what herdr
+on the UI. `herdr plugin log list --plugin herdr-bar` shows what herdr
 recorded when it launched the plugin.
 
 ## License

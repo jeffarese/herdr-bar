@@ -27,7 +27,7 @@ options:
   --help      show this message
 
 Normally Herdr launches this itself:
-  herdr plugin action invoke jeffarese.bar.open
+  herdr plugin action invoke herdr-bar.open
 """
 
 

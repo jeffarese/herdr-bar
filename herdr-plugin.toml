@@ -1,4 +1,4 @@
-id = "jeffarese.bar"
+id = "herdr-bar"
 name = "Bar"
 version = "0.1.0"
 # 0.7.4 is the first release with session-modal popup plugin panes;
@@ -19,7 +19,7 @@ contexts = ["global"]
 command = [
   "sh",
   "-c",
-  'herdr_bin="${HERDR_BIN_PATH:-herdr}"; [ -x "$herdr_bin" ] || herdr_bin=herdr; exec "$herdr_bin" plugin pane open --plugin jeffarese.bar --entrypoint bar --placement popup',
+  'herdr_bin="${HERDR_BIN_PATH:-herdr}"; [ -x "$herdr_bin" ] || herdr_bin=herdr; exec "$herdr_bin" plugin pane open --plugin herdr-bar --entrypoint bar --placement popup',
 ]
 
 [[panes]]
