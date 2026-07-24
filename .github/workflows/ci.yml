@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ["3.9", "3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Tests
+        run: python -m unittest discover -s tests -t .
+        env:
+          PYTHONPATH: src
+      - name: Static frame renders
+        run: python scripts/demo.py --frame --plain --size 100x18
+      - name: Manifest parses
+        if: matrix.python == '3.13'
+        run: |
+          python - <<'PY'
+          import tomllib
+          with open("herdr-plugin.toml", "rb") as handle:
+              manifest = tomllib.load(handle)
+          for key in ("id", "name", "version", "min_herdr_version"):
+              assert manifest.get(key), "manifest is missing %s" % key
+          assert manifest["panes"][0]["placement"] == "popup"
+          assert manifest["actions"][0]["id"] == "open"
+          print("manifest ok:", manifest["id"], manifest["version"])
+          PY
