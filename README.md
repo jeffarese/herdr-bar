@@ -1,5 +1,7 @@
 # herdr-bar
 
+[![ci](https://github.com/jeffarese/herdr-bar/actions/workflows/ci.yml/badge.svg)](https://github.com/jeffarese/herdr-bar/actions/workflows/ci.yml)
+
 **Cmd+K for [herdr](https://herdr.dev).** One chord opens a search field over your
 session, you type a few letters of a tab, an agent, a repo or a branch, and Enter
 takes you there. Like the Slack quick switcher, for the terminal.
@@ -177,11 +179,12 @@ git clone https://github.com/jeffarese/herdr-bar
 cd herdr-bar
 herdr plugin link .
 
-python3 -m unittest discover -s tests -t .      # 144 tests, no dependencies
+python3 -m unittest discover -s tests -t .      # 142 tests, no dependencies
 python3 run.py --doctor                         # environment diagnostics
 python3 run.py --list                           # the rows, as JSON
 python3 scripts/demo.py                         # run against fixture data
 python3 scripts/demo.py --frame --plain         # print one static frame
+ruff check .                                    # lint, if you have it
 ```
 
 `scripts/demo.py` needs no herdr server, which makes it the fastest way to work

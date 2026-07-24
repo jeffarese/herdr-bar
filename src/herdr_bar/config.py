@@ -1,9 +1,9 @@
 """User configuration.
 
-Read from ``$HERDR_PLUGIN_CONFIG_DIR/config.json`` -- JSON rather than TOML so
-the plugin keeps working on any Python 3.8+ without a parser dependency.
-Unknown keys are ignored, and a broken file falls back to defaults instead of
-taking the bar down.
+Read from ``$HERDR_PLUGIN_CONFIG_DIR/config.json`` -- JSON rather than TOML
+because ``tomllib`` only arrived in 3.11, and the bar targets 3.9 without
+taking on a parser dependency. Unknown keys are ignored, and a broken file
+falls back to defaults instead of taking the bar down.
 """
 
 from __future__ import annotations
@@ -41,7 +41,9 @@ class Config(object):
 
     @staticmethod
     def path(config_dir: Optional[str] = None) -> Optional[str]:
-        directory = config_dir if config_dir is not None else os.environ.get("HERDR_PLUGIN_CONFIG_DIR")
+        directory = config_dir
+        if directory is None:
+            directory = os.environ.get("HERDR_PLUGIN_CONFIG_DIR")
         if not directory:
             return None
         return os.path.join(directory, "config.json")
@@ -52,7 +54,7 @@ class Config(object):
         if not path or not os.path.exists(path):
             return cls()
         try:
-            with open(path, "r") as handle:
+            with open(path, "r", encoding="utf-8") as handle:
                 data = json.load(handle)
         except (OSError, ValueError):
             return cls()

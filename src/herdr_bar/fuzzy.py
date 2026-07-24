@@ -12,7 +12,7 @@ the exact matched positions for highlighting.
 
 from __future__ import annotations
 
-from typing import List, NamedTuple, Optional, Sequence, Tuple
+from typing import List, NamedTuple, Optional, Tuple
 
 SCORE_MATCH = 16
 BONUS_BOUNDARY = 16
@@ -159,18 +159,3 @@ def match(query: str, text: str) -> Optional[Match]:
             break
     positions.reverse()
     return Match(final[best_index], tuple(positions))
-
-
-def match_terms(terms: Sequence[str], text: str) -> Optional[Match]:
-    """Match every term against the same text and merge scores and positions."""
-    if not terms:
-        return Match(0, ())
-    total = 0
-    positions: List[int] = []
-    for term in terms:
-        found = match(term, text)
-        if found is None:
-            return None
-        total += found.score
-        positions.extend(found.positions)
-    return Match(total, tuple(sorted(set(positions))))

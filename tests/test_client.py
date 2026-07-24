@@ -60,7 +60,10 @@ class SocketServer(object):
 def ok(request):
     method = request["method"]
     if method == "session.snapshot":
-        return {"id": request["id"], "result": {"type": "session_snapshot", "snapshot": fixtures.snapshot()}}
+        return {
+            "id": request["id"],
+            "result": {"type": "session_snapshot", "snapshot": fixtures.snapshot()},
+        }
     if method == "pane.read":
         return {
             "id": request["id"],
@@ -121,7 +124,9 @@ class SocketTransportTest(unittest.TestCase):
         self.assertIn("no such tab", str(caught.exception))
 
     def test_missing_socket_falls_back_to_the_cli(self):
-        client = HerdrClient(socket_path=os.path.join(self.dir, "gone.sock"), bin_path="/nonexistent")
+        client = HerdrClient(
+            socket_path=os.path.join(self.dir, "gone.sock"), bin_path="/nonexistent"
+        )
         self.assertFalse(client.socket_ok)
         with self.assertRaises(HerdrError):
             client.snapshot()

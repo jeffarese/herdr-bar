@@ -187,13 +187,7 @@ def render_row(
     title_width = max(1, available - (meta_width + 2 if meta_width else 0))
 
     title_text, positions, _ = window_positions(item.title, title_width, row.positions)
-    title_segments = _highlight(
-        theme,
-        title_text,
-        positions,
-        "text" if selected else "text",
-        selected,
-    )
+    title_segments = _highlight(theme, title_text, positions, "text", selected)
 
     used = _plain_width(title_segments)
     gap = max(1, available - used - meta_width) if meta_width else available - used

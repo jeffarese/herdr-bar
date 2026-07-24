@@ -26,7 +26,7 @@ class Recents(object):
         if not self.path or not os.path.exists(self.path):
             return
         try:
-            with open(self.path, "r") as handle:
+            with open(self.path, "r", encoding="utf-8") as handle:
                 data = json.load(handle)
         except (OSError, ValueError):
             return
@@ -73,7 +73,12 @@ class Recents(object):
             if directory:
                 os.makedirs(directory, exist_ok=True)
             handle = tempfile.NamedTemporaryFile(
-                "w", dir=directory or ".", delete=False, prefix=".recent-", suffix=".json"
+                "w",
+                encoding="utf-8",
+                dir=directory or ".",
+                delete=False,
+                prefix=".recent-",
+                suffix=".json",
             )
             try:
                 json.dump({"version": 1, "entries": self.entries}, handle)

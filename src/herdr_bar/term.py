@@ -99,7 +99,7 @@ class Terminal(object):
     def wait(self, timeout: Optional[float]) -> bool:
         try:
             readable, _, _ = select.select([self.in_fd], [], [], timeout)
-        except (OSError, select.error):
+        except OSError:  # select.error is an alias of OSError on Python 3
             return False
         return bool(readable)
 

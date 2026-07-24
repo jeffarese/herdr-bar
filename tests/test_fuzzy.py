@@ -1,6 +1,6 @@
 import unittest
 
-from herdr_bar.fuzzy import match, match_terms, split_query
+from herdr_bar.fuzzy import match, split_query
 
 
 class SplitQueryTest(unittest.TestCase):
@@ -60,17 +60,6 @@ class MatchTest(unittest.TestCase):
         found = match("k", "week")
         assert found is not None
         self.assertEqual(found.positions, (3,))
-
-
-class MatchTermsTest(unittest.TestCase):
-    def test_every_term_must_match(self):
-        self.assertIsNone(match_terms(["week", "zzz"], "week generation"))
-
-    def test_positions_are_merged_and_sorted(self):
-        found = match_terms(["gen", "week"], "week generation")
-        assert found is not None
-        self.assertEqual(list(found.positions), sorted(found.positions))
-        self.assertEqual(len(set(found.positions)), len(found.positions))
 
 
 if __name__ == "__main__":

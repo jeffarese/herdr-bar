@@ -375,7 +375,7 @@ class Bar(object):
 
     # -- preview ------------------------------------------------------------
 
-    def preview_lines(self, item: Optional[Item], height: int) -> Tuple[List[str], bool]:
+    def preview_lines(self, item: Optional[Item]) -> Tuple[List[str], bool]:
         if item is None or not item.pane_id or item.kind == KIND_SPACE:
             return [], False
         cached = self._preview_cache.get(item.pane_id)
@@ -429,7 +429,7 @@ class Bar(object):
         selected_item = self.selected_item() if self.rows else None
         preview_body: List[str] = []
         if layout.preview_width:
-            lines, loading = self.preview_lines(selected_item, layout.list_height)
+            lines, loading = self.preview_lines(selected_item)
             preview_body = render.render_preview(
                 self.theme,
                 selected_item,

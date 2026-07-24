@@ -19,13 +19,12 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 sys.path.insert(0, ROOT)
 
-from tests.fixtures import PREVIEW_TEXT, snapshot  # noqa: E402
-
 from herdr_bar.app import Bar  # noqa: E402
 from herdr_bar.config import Config  # noqa: E402
 from herdr_bar.mru import Recents  # noqa: E402
 from herdr_bar.term import Terminal  # noqa: E402
 from herdr_bar.theme import Theme  # noqa: E402
+from tests.fixtures import PREVIEW_TEXT, snapshot  # noqa: E402
 
 
 class FakeClient(object):

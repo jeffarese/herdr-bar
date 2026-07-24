@@ -48,7 +48,9 @@ class HerdrClient:
         bin_path: Optional[str] = None,
         timeout: float = 4.0,
     ) -> None:
-        self.socket_path = socket_path if socket_path is not None else _env_path("HERDR_SOCKET_PATH")
+        if socket_path is None:
+            socket_path = _env_path("HERDR_SOCKET_PATH")
+        self.socket_path = socket_path
         self.bin_path = bin_path or _resolve_bin()
         self.timeout = timeout
         self._socket_ok = self._socket_usable()
@@ -99,6 +101,7 @@ class HerdrClient:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 timeout=self.timeout + 4.0,
+                check=False,  # a non-zero exit still carries a usable message
             )
         except FileNotFoundError:
             raise HerdrError("herdr binary not found (set HERDR_BIN_PATH)")

@@ -303,12 +303,12 @@ class PreviewTest(unittest.TestCase):
         client = FakeClient()
         instance = bar(client=client)
         item = next(item for item in instance.items if item.pane_id)
-        lines, loading = instance.preview_lines(item, 10)
+        lines, loading = instance.preview_lines(item)
         self.assertTrue(loading)
         self.assertEqual(lines, [])
         instance._preview_pending = (item.pane_id, 0.0)
         instance.pump_preview(10)
-        lines, loading = instance.preview_lines(item, 10)
+        lines, loading = instance.preview_lines(item)
         self.assertFalse(loading)
         self.assertIn("Ready", "\n".join(lines))
         instance.pump_preview(10)
@@ -317,7 +317,7 @@ class PreviewTest(unittest.TestCase):
     def test_workspace_rows_have_no_preview(self):
         instance = bar()
         item = next(item for item in instance.items if item.kind == KIND_SPACE)
-        self.assertEqual(instance.preview_lines(item, 10), ([], False))
+        self.assertEqual(instance.preview_lines(item), ([], False))
 
 
 if __name__ == "__main__":
