@@ -16,6 +16,8 @@ class FakeClient(object):
         self._snapshot = snapshot or fixtures.snapshot()
         self.calls = []
         self.fail = False
+        self.close_error = None
+        self.ages = dict(fixtures.PANE_AGES)
 
     def snapshot(self):
         if self.fail:
@@ -25,6 +27,21 @@ class FakeClient(object):
     def read_pane(self, pane_id, lines, source="visible"):
         self.calls.append(("read", pane_id))
         return fixtures.PREVIEW_TEXT
+
+    def pane_age(self, pane_id):
+        self.calls.append(("age", pane_id))
+        return self.ages.get(pane_id)
+
+    def close_tab(self, tab_id):
+        self.calls.append(("close", tab_id))
+        if self.close_error:
+            raise HerdrError(self.close_error)
+        snapshot = dict(self._snapshot)
+        for key in ("tabs", "agents", "panes"):
+            snapshot[key] = [
+                record for record in snapshot[key] if record.get("tab_id") != tab_id
+            ]
+        self._snapshot = snapshot
 
     def focus_workspace(self, workspace_id):
         self.calls.append(("workspace", workspace_id))
@@ -296,6 +313,203 @@ class JumpTest(unittest.TestCase):
         item = next(item for item in instance.items if item.kind == KIND_SPACE)
         jump(client, item)
         self.assertEqual(client.calls, [("workspace", item.workspace_id)])
+
+
+def escape(instance):
+    decoder = KeyDecoder()
+    decoder.feed(b"\x1b")
+    return instance._consume(decoder.flush())
+
+
+DELETE = b"\x1b[3~"
+
+
+class CloseTest(unittest.TestCase):
+    def closes(self, client):
+        return [call for call in client.calls if call[0] == "close"]
+
+    def test_delete_arms_a_confirmation_instead_of_closing(self):
+        client = FakeClient()
+        instance = bar(client=client)
+        press(instance, DELETE)
+        self.assertIsNotNone(instance.pending_close)
+        self.assertEqual(self.closes(client), [])
+
+    def test_enter_closes_the_tab_behind_the_row(self):
+        client = FakeClient()
+        instance = bar(client=client)
+        tab_id = instance.selected_item().tab_id
+        press(instance, DELETE)
+        self.assertIsNone(press(instance, b"\r"))  # confirming is not jumping
+        self.assertEqual(self.closes(client), [("close", tab_id)])
+        self.assertIsNone(instance.pending_close)
+
+    def test_backspace_arms_it_too_once_it_has_nothing_to_erase(self):
+        client = FakeClient()
+        instance = bar(client=client)
+        press(instance, b"\x7f")
+        self.assertIsNotNone(instance.pending_close)
+        self.assertTrue(instance.backspace_closes())
+
+    def test_backspace_erases_the_query_before_it_closes_anything(self):
+        instance = bar()
+        press(instance, b"week")
+        press(instance, b"\x7f")
+        self.assertEqual(instance.query, "wee")
+        self.assertIsNone(instance.pending_close)
+        self.assertFalse(instance.backspace_closes())
+
+    def test_backspace_clears_the_filter_before_it_closes_anything(self):
+        instance = bar()
+        press(instance, b"@")
+        press(instance, b"\x7f")
+        self.assertEqual(instance.scope, "all")
+        self.assertIsNone(instance.pending_close)
+        press(instance, b"\x7f")
+        self.assertIsNotNone(instance.pending_close)
+
+    def test_a_held_delete_key_cannot_confirm_itself(self):
+        client = FakeClient()
+        instance = bar(client=client)
+        press(instance, DELETE, DELETE)
+        self.assertIsNone(instance.pending_close)
+        self.assertEqual(self.closes(client), [])
+        press(instance, b"\x7f", b"\x7f")
+        self.assertIsNone(instance.pending_close)
+        self.assertEqual(self.closes(client), [])
+
+    def test_y_confirms_too(self):
+        client = FakeClient()
+        instance = bar(client=client)
+        press(instance, DELETE, b"y")
+        self.assertEqual(len(self.closes(client)), 1)
+
+    def test_escape_cancels_the_close_and_leaves_the_bar_open(self):
+        client = FakeClient()
+        instance = bar(client=client)
+        press(instance, DELETE)
+        self.assertIsNone(escape(instance))
+        self.assertIsNone(instance.pending_close)
+        self.assertEqual(self.closes(client), [])
+
+    def test_any_other_key_cancels_and_is_swallowed(self):
+        client = FakeClient()
+        instance = bar(client=client)
+        press(instance, DELETE, b"n")
+        self.assertIsNone(instance.pending_close)
+        self.assertEqual(instance.query, "")
+        self.assertEqual(self.closes(client), [])
+
+    def test_ctrl_c_still_leaves(self):
+        instance = bar()
+        press(instance, DELETE)
+        self.assertEqual(press(instance, b"\x03"), "cancel")
+        self.assertIsNone(instance.pending_close)
+
+    def test_the_closed_row_disappears(self):
+        client = FakeClient()
+        instance = bar(client=client)
+        title = instance.selected_item().title
+        press(instance, DELETE, b"\r")
+        self.assertNotIn(title, titles(instance))
+        self.assertLess(instance.selected, len(instance.rows))
+
+    def test_the_confirmation_counts_the_agents_going_with_the_tab(self):
+        snapshot = fixtures.snapshot()
+        second = dict(snapshot["agents"][0])
+        second.update({"pane_id": "w1:p7", "terminal_title_stripped": "second agent"})
+        snapshot["agents"].append(second)
+        snapshot["panes"].append(second)
+        instance = bar(client=FakeClient(snapshot))
+        instance.selected = next(
+            index for index, row in enumerate(instance.rows) if row.item.pane_id == "w1:p7"
+        )
+        press(instance, DELETE)
+        self.assertEqual(instance.pending_close[0], "w1:t2")
+        self.assertEqual(instance.pending_close[2], 2)
+
+    def test_workspace_rows_cannot_be_closed(self):
+        client = FakeClient()
+        instance = bar(client=client)
+        instance.selected = next(
+            index for index, row in enumerate(instance.rows) if row.item.kind == KIND_SPACE
+        )
+        press(instance, DELETE)
+        self.assertIsNone(instance.pending_close)
+        self.assertIsNotNone(instance.status)
+        self.assertEqual(self.closes(client), [])
+
+    def test_a_refused_close_flashes_the_reason(self):
+        client = FakeClient()
+        client.close_error = "tab is busy"
+        instance = bar(client=client)
+        press(instance, DELETE, b"\r")
+        self.assertIn("busy", instance.status)
+
+    def test_ctrl_d_forward_deletes_in_the_query(self):
+        instance = bar()
+        press(instance, b"week")
+        press(instance, b"\x1b[D\x1b[D")  # left, left
+        press(instance, b"\x04")
+        self.assertEqual(instance.query, "wek")
+
+
+class AgeTest(unittest.TestCase):
+    def reads(self, client):
+        return [call for call in client.calls if call[0] == "age"]
+
+    def item(self, instance, pane_id):
+        return next(item for item in instance.items if item.pane_id == pane_id)
+
+    def test_a_pane_is_read_once_and_then_ticked_locally(self):
+        client = FakeClient()
+        instance = bar(client=client)
+        item = self.item(instance, "w1:p3")
+        self.assertIsNone(instance.age_of(item))  # queued, not read yet
+        instance.pump_ages()
+        self.assertAlmostEqual(
+            instance.age_of(item), fixtures.PANE_AGES["w1:p3"], delta=1.0
+        )
+        instance.pump_ages()
+        self.assertEqual(self.reads(client), [("age", "w1:p3")])
+
+    def test_only_one_pane_is_read_per_pass(self):
+        client = FakeClient()
+        instance = bar(client=client)
+        for item in instance.items:
+            instance.age_of(item)
+        instance.pump_ages()
+        self.assertEqual(len(self.reads(client)), 1)
+
+    def test_an_undatable_pane_is_not_asked_twice(self):
+        client = FakeClient()
+        client.ages = {}
+        instance = bar(client=client)
+        item = self.item(instance, "w1:p3")
+        instance.age_of(item)
+        instance.pump_ages()
+        self.assertIsNone(instance.age_of(item))
+        instance.pump_ages()
+        self.assertEqual(len(self.reads(client)), 1)
+
+    def test_a_failing_read_is_not_fatal(self):
+        client = FakeClient()
+
+        def boom(pane_id):
+            raise HerdrError("herdr is not running")
+
+        client.pane_age = boom
+        instance = bar(client=client)
+        item = self.item(instance, "w1:p3")
+        instance.age_of(item)
+        instance.pump_ages()
+        self.assertIsNone(instance.age_of(item))
+
+    def test_workspace_rows_have_no_running_time(self):
+        instance = bar()
+        item = next(item for item in instance.items if item.kind == KIND_SPACE)
+        self.assertIsNone(instance.age_of(item))
+        self.assertEqual(instance._age_queue, [])
 
 
 class PreviewTest(unittest.TestCase):

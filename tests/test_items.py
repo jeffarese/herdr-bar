@@ -35,6 +35,24 @@ class BuildItemsTest(unittest.TestCase):
         self.assertEqual(agent.status, "blocked")
         self.assertEqual(agent.tab_number, 4)
 
+    def test_agent_rows_lead_with_the_tab_name_and_trail_the_summary(self):
+        agent = next(item for item in self.items if item.pane_id == "w1:p2")
+        self.assertEqual(agent.title, "Redesign week loading screen")
+        self.assertEqual(agent.detail, "Start server for viewing")
+        self.assertIn("Start server for viewing", agent.fields)
+
+    def test_summary_stands_alone_when_the_tab_has_no_name(self):
+        snapshot = fixtures.snapshot()
+        snapshot["tabs"][1]["label"] = ""
+        agent = next(i for i in build_items(snapshot) if i.pane_id == "w1:p2")
+        self.assertEqual(agent.title, "Start server for viewing")
+        self.assertEqual(agent.detail, "")
+
+    def test_summary_is_dropped_when_it_repeats_the_tab_name(self):
+        agent = next(item for item in self.items if item.pane_id == "w1:p4")
+        self.assertEqual(agent.title, "cards meaningless")
+        self.assertEqual(agent.detail, "")
+
     def test_focused_pane_marks_exactly_one_row(self):
         focused = [item for item in self.items if item.focused and item.kind != KIND_SPACE]
         self.assertEqual(len(focused), 1)

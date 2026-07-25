@@ -51,6 +51,7 @@ def snapshot() -> Dict[str, Any]:
         {
             "pane_id": "w1:p2", "tab_id": "w1:t2", "workspace_id": "w1", "agent": "claude",
             "agent_status": "working", "cwd": "/Users/dev/workspace/pacebeats",
+            "title": "Start server for viewing",
             "terminal_title_stripped": "Redesign week loading screen", "focused": False,
         },
         {
@@ -103,6 +104,20 @@ def snapshot() -> Dict[str, Any]:
         "agents": agents,
         "layouts": [],
     }
+
+
+# Plausible running times for the synthetic panes, so the demo and the render
+# tests exercise every shape the row can show.
+PANE_AGES = {
+    "w1:p1": 4 * 86400 + 3 * 3600,
+    "w1:p2": 47.0,
+    "w1:p3": 12 * 60.0,
+    "w1:p4": 2 * 3600 + 4 * 60.0,
+    "w1:p5": 3 * 3600 + 41 * 60.0,
+    "w1:p6": 26 * 3600.0,
+    "w2:p1": 8 * 60.0,
+    "w2:p2": 55 * 60.0,
+}
 
 
 PREVIEW_TEXT = """● Ready · pacebeats

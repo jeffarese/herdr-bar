@@ -87,8 +87,11 @@ class Bar(object):
         self.tick = 0
         self.status: Optional[str] = None
         self.status_until = 0.0
+        self.pending_close: Optional[Tuple[str, str, int]] = None
         self._preview_cache: Dict[str, Tuple[float, List[str]]] = {}
         self._preview_pending: Optional[Tuple[str, float]] = None
+        self._ages: Dict[str, Optional[Tuple[float, float]]] = {}
+        self._age_queue: List[str] = []
         self._last_refresh = 0.0
         self._last_spin = 0.0
         self._dirty = True
@@ -260,6 +263,10 @@ class Bar(object):
             if self.scope != "all":
                 self.scope = "all"
                 self.rebuild()
+                return
+            # Nothing left to unwind, and this is the key labelled "delete" on
+            # a Mac keyboard: offer to close the row instead of doing nothing.
+            self.request_close()
             return
         if self.cursor <= 0:
             return
@@ -327,6 +334,10 @@ class Bar(object):
             self.backspace()
             return None
         if name == "delete":
+            self.request_close()
+            return None
+        if name == "ctrl+d":
+            # Forward delete lives here now that ⌦ closes tabs.
             if self.cursor < len(self.query):
                 self.set_query(
                     self.query[: self.cursor] + self.query[self.cursor + 1 :], self.cursor
@@ -351,6 +362,66 @@ class Bar(object):
 
     def _page(self) -> int:
         return max(1, self._list_height - 1)
+
+    # -- closing ------------------------------------------------------------
+
+    def backspace_closes(self) -> bool:
+        """Whether backspace currently arms a close rather than erasing."""
+        return not self.query and self.scope == "all"
+
+    def request_close(self) -> None:
+        """Arm the confirmation for the selected row's tab.
+
+        Rows are per agent, so a tab running two of them shows up twice; the
+        confirmation says how many are going, because the tab takes them all.
+        """
+        if not self.rows:
+            return
+        item = self.selected_item()
+        if item.kind == KIND_SPACE or not item.tab_id:
+            self.flash("only tabs and agents can be closed")
+            return
+        agents = sum(
+            1
+            for other in self.items
+            if other.kind == KIND_AGENT and other.tab_id == item.tab_id
+        )
+        self.pending_close = (item.tab_id, item.title, agents)
+        self._dirty = True
+
+    def confirm_close(self) -> None:
+        if self.pending_close is None:
+            return
+        tab_id, title, _ = self.pending_close
+        self.pending_close = None
+        try:
+            self.client.close_tab(tab_id)
+        except HerdrError as error:
+            self.flash(str(error))
+            return
+        self.refresh(force=True)
+        self.flash("closed %s" % title)
+
+    def handle_confirm(self, event: Event) -> Optional[str]:
+        """An armed close owns the keyboard: every key answers it, once.
+
+        Deliberately not the delete keys themselves -- they repeat when held,
+        and a repeat should never be read as a yes.
+        """
+        if event.kind == KEY:
+            if event.value == "enter":
+                self.confirm_close()
+                return None
+            if event.value in ("ctrl+c", "ctrl+q"):
+                # The panic exit stays the panic exit.
+                self.pending_close = None
+                return "cancel"
+        elif event.kind == TEXT and event.value in ("y", "Y"):
+            self.confirm_close()
+            return None
+        self.pending_close = None
+        self._dirty = True
+        return None
 
     def handle_mouse(self, event: Event) -> Optional[str]:
         if event.value == WHEEL_UP:
@@ -402,6 +473,43 @@ class Bar(object):
             lines.pop()
         self._preview_cache[pane_id] = (time.monotonic(), lines)
         self._dirty = True
+
+    # -- running time -------------------------------------------------------
+
+    def age_of(self, item: Item) -> Optional[float]:
+        """How long the row's process has been up, queueing a first reading.
+
+        A start time never moves, so each pane is read once and then ticked
+        locally -- the list stays live without paying for it every refresh.
+        """
+        pane_id = item.pane_id
+        if not pane_id or item.kind == KIND_SPACE:
+            return None
+        if pane_id not in self._ages:
+            if pane_id not in self._age_queue:
+                self._age_queue.append(pane_id)
+            return None
+        reading = self._ages[pane_id]
+        if reading is None:
+            return None
+        taken, seconds = reading
+        return seconds + (time.monotonic() - taken)
+
+    def pump_ages(self) -> None:
+        """Take at most one reading per pass, so input never waits on ps."""
+        while self._age_queue:
+            pane_id = self._age_queue.pop(0)
+            if pane_id in self._ages:
+                continue
+            try:
+                seconds = self.client.pane_age(pane_id)
+            except HerdrError:
+                seconds = None
+            # A pane that cannot be dated is remembered as such: one failed
+            # reading is enough, and the row simply shows no time.
+            self._ages[pane_id] = None if seconds is None else (time.monotonic(), seconds)
+            self._dirty = True
+            return
 
     # -- drawing ------------------------------------------------------------
 
@@ -500,6 +608,7 @@ class Bar(object):
                     position == self.selected,
                     self.tick,
                     show_workspace,
+                    self.age_of(self.rows[position].item),
                 )
             if marks:
                 body = pad(body, content_width) + self.theme.paint("unknown", marks.get(index, " "))
@@ -507,6 +616,9 @@ class Bar(object):
         return out
 
     def _footer(self, width: int) -> str:
+        if self.pending_close is not None:
+            _, title, agents = self.pending_close
+            return render.render_confirm(self.theme, width, title, agents)
         if self.status and time.monotonic() < self.status_until:
             message = self.theme.paint("accent", self.status)
             return message
@@ -514,8 +626,11 @@ class Bar(object):
             ("↑↓", "move"),
             ("⏎", "jump"),
             ("⇥", "scope"),
+            # Backspace only reaches the close once there is nothing left for
+            # it to erase, so the footer names whichever key works right now.
+            ("⌫" if self.backspace_closes() else "⌦", "close"),
             ("^o", "preview"),
-            ("esc", "close"),
+            ("esc", "quit"),
         ]
         if width < 52:
             hints = [("↑↓", ""), ("⏎", ""), ("esc", "")]
@@ -562,6 +677,7 @@ class Bar(object):
                     self.tick += 1
                     self._dirty = True
             self.pump_preview(self._list_height)
+            self.pump_ages()
             if self.status and now >= self.status_until:
                 self.status = None
                 self._dirty = True
@@ -571,6 +687,11 @@ class Bar(object):
     def _consume(self, events: Sequence[Event]) -> Optional[str]:
         outcome: Optional[str] = None
         for event in events:
+            if self.pending_close is not None:
+                outcome = self.handle_confirm(event) or outcome
+                if outcome == "cancel":
+                    return outcome
+                continue
             if event.kind == KEY:
                 outcome = self.handle_key(event.value) or outcome
             elif event.kind == TEXT:
@@ -585,6 +706,10 @@ class Bar(object):
 
     def _next_timeout(self, escape_deadline: Optional[float]) -> float:
         now = time.monotonic()
+        if self._age_queue:
+            # Readings outstanding: come straight back for the next one, so a
+            # freshly drawn list fills in its times inside a few frames.
+            return 0.01
         deadlines = [self._last_refresh + self.config.refresh_ms / 1000.0]
         if self.config.spinner and any(row.item.status == "working" for row in self.rows):
             deadlines.append(self._last_spin + SPINNER_INTERVAL)

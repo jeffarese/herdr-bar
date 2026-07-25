@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 from typing import Dict, List, NamedTuple, Optional, Sequence, Tuple
 
+from .age import format_age
 from .items import KIND_SPACE, Item
 from .textutil import display_width, pad, truncate, truncate_middle, window_positions
 from .theme import RESET, Theme
@@ -31,6 +32,8 @@ STATUS_WORDS = {
     "none": "",
 }
 
+DETAIL_SEP = " — "
+MIN_DETAIL = 6
 MIN_TITLE = 16
 META_SHARE = 0.45
 MIN_LIST = 46
@@ -142,6 +145,7 @@ def render_row(
     selected: bool,
     tick: int,
     show_workspace: bool,
+    age: Optional[float] = None,
 ) -> str:
     item = row.item
     background = theme.selection_bg if selected else ""
@@ -165,8 +169,11 @@ def render_row(
         label = "@" + item.agent_name if item.agent_name else item.agent
         meta.append(Segment("muted", label))
     if item.focused:
-        # Last in, so the "current" tag survives the responsive trimming.
         meta.append(Segment("accent", "current"))
+    if age is not None:
+        # Late in, so running time and the status word -- the two things that
+        # tell you whether to look now -- survive the responsive trimming.
+        meta.append(Segment("muted", format_age(age)))
     word = STATUS_WORDS.get(item.status, "")
     if word:
         meta.append(Segment(glyph_role, word))
@@ -190,6 +197,14 @@ def render_row(
     title_segments = _highlight(theme, title_text, positions, "text", selected)
 
     used = _plain_width(title_segments)
+    if item.detail:
+        # The tab name has already had its say; the summary takes whatever the
+        # row has left, and steps aside entirely when that is not worth reading.
+        room = title_width - used - display_width(DETAIL_SEP)
+        if room >= MIN_DETAIL:
+            title_segments.append(Segment("unknown", DETAIL_SEP))
+            title_segments.append(Segment("muted", truncate(item.detail, room)))
+            used = _plain_width(title_segments)
     gap = max(1, available - used - meta_width) if meta_width else available - used
     segments = [marker, glyph] + title_segments
     if meta_width:
@@ -291,6 +306,32 @@ def render_footer(theme: Theme, width: int, hints: Sequence[Tuple[str, str]], co
     return _segments_to_text(theme, segments)
 
 
+def render_confirm(theme: Theme, width: int, title: str, agents: int) -> str:
+    """The armed close: what is about to go, and the keys that answer."""
+    keys = "⏎ close · esc keep"
+    detail = " and %d agents" % agents if agents > 1 else ""
+    room = max(6, width - display_width(keys) - display_width(detail) - 12)
+    segments = [
+        Segment("blocked", "close ", True),
+        Segment("text", "“%s”" % truncate(title, room), True),
+        Segment("blocked", detail + "?"),
+    ]
+    used = _plain_width(segments)
+    if used + display_width(keys) + 1 > width:
+        keys = "⏎/esc"
+    if used + display_width(keys) + 1 > width:
+        # Nothing fits twice over: keep the question, lose the styling.
+        text = truncate("close “%s”?" % title, max(0, width - display_width(keys) - 1))
+        segments = [Segment("blocked", text, True)]
+        used = _plain_width(segments)
+    padding = max(1, width - used - display_width(keys))
+    if used + padding + display_width(keys) > width:  # a popup too narrow for both
+        return _segments_to_text(theme, [Segment("blocked", truncate("close?", width), True)])
+    segments.append(Segment("", " " * padding))
+    segments.append(Segment("muted", keys))
+    return _segments_to_text(theme, segments)
+
+
 def render_empty_state(
     theme: Theme, width: int, query: str, has_items: bool, scoped: bool
 ) -> List[str]:
@@ -340,7 +381,12 @@ def render_preview(
     if item is None:
         return [""] * height
 
-    out.append(_segments_to_text(theme, [Segment("text", truncate(item.title, width), True)]))
+    header = [Segment("text", truncate(item.title, width), True)]
+    room = width - _plain_width(header) - display_width(DETAIL_SEP)
+    if item.detail and room >= MIN_DETAIL:
+        header.append(Segment("unknown", DETAIL_SEP))
+        header.append(Segment("muted", truncate(item.detail, room)))
+    out.append(_segments_to_text(theme, header))
     subtitle = item.subtitle or item.workspace_label
     out.append(
         _segments_to_text(theme, [Segment("unknown", truncate_middle(subtitle, width))])

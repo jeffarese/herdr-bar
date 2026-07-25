@@ -24,7 +24,7 @@ from herdr_bar.config import Config  # noqa: E402
 from herdr_bar.mru import Recents  # noqa: E402
 from herdr_bar.term import Terminal  # noqa: E402
 from herdr_bar.theme import Theme  # noqa: E402
-from tests.fixtures import PREVIEW_TEXT, snapshot  # noqa: E402
+from tests.fixtures import PANE_AGES, PREVIEW_TEXT, snapshot  # noqa: E402
 
 
 class FakeClient(object):
@@ -37,6 +37,12 @@ class FakeClient(object):
 
     def read_pane(self, pane_id, lines, source="visible"):
         return PREVIEW_TEXT
+
+    def pane_age(self, pane_id):
+        return PANE_AGES.get(pane_id)
+
+    def close_tab(self, tab_id):
+        pass
 
     def focus_workspace(self, workspace_id):
         pass
@@ -94,6 +100,8 @@ def main(argv):
         if bar._preview_pending:  # skip the debounce the draw just armed
             bar._preview_pending = (bar._preview_pending[0], 0.0)
         bar.pump_preview(bar._list_height)
+        while bar._age_queue:  # the loop would spread these over a few frames
+            bar.pump_ages()
         terminal.buffer = []
         bar.draw(terminal)
         frame = _flatten("".join(terminal.buffer), height)

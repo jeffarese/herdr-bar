@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- `delete`, and `backspace` once it has nothing left to erase, close the
+  selected row's tab after a confirmation in the footer; `enter` or `y` goes
+  through with it, `esc` or any other key calls it off. A tab running more than
+  one agent says how many go with it. Forward delete in the query moved to
+  `ctrl+d`.
+- Agent rows lead with the tab's own name and trail it with the agent's current
+  summary, dropping the summary when a narrow row has no space for it or when it
+  only repeats the name.
+- Rows show how long their process has been running — the agent session, or
+  whatever a plain tab is running. Read once per pane from `pane.process_info`
+  and `ps`, then ticked locally.
+
 ## 0.1.0
 
 Initial release. Requires herdr 0.7.4+ and Python 3.9+.

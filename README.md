@@ -17,8 +17,12 @@ takes you there. Like the Slack quick switcher, for the terminal.
 - **opens on what matters** — blocked and finished agents float to the top,
   recently visited rows above them, and the tab you are in is never first, so
   open-then-Enter works like alt-tab.
+- **running time on every row** — how long the agent session, or whatever the
+  tab is running, has been up: `47s`, `12m`, `2h04m`, `4d3h`.
 - **live preview** — the right column tails the selected pane, so you can look
   before you leap.
+- **closes tabs** — `⌦` on a row closes its tab once you confirm, so the
+  session you are looking at is the session you can tidy.
 - **no dependencies** — Python 3 standard library only. No build step, no
   runtime to install, no daemon.
 
@@ -86,11 +90,12 @@ Whichever you pick, Cmd+K is likely already taken by the terminal (usually
 | type | fuzzy search; space separates terms, all of which must match |
 | `↑` `↓`, `ctrl+p` `ctrl+n`, `ctrl+k` `ctrl+j` | move |
 | `enter` | jump to the selected row and close |
-| `esc`, `ctrl+c`, `ctrl+g` | close, change nothing |
+| `esc`, `ctrl+c`, `ctrl+g` | leave, change nothing |
 | `tab` / `shift+tab` | cycle the filter |
 | `@` `$` `!` on an empty query | filter to agents / plain tabs / rows that need you |
-| `backspace` on an empty query | clear the filter |
-| `ctrl+u` / `ctrl+w` | clear the query / delete a word |
+| `backspace` on an empty query | clear the filter, then close the selected row's tab |
+| `delete` (fn+`⌫` on a Mac laptop) | close the selected row's tab, whatever is typed |
+| `ctrl+u` / `ctrl+w` / `ctrl+d` | clear the query / delete a word / forward delete |
 | `ctrl+o` | toggle the preview |
 | `ctrl+r` | refresh now |
 | `pgup` / `pgdn` | page |
@@ -99,6 +104,26 @@ Whichever you pick, Cmd+K is likely already taken by the terminal (usually
 **What is in the list.** Every agent, every tab that has no agent, and — once a
 session has more than one — every workspace. Selecting an agent focuses its tab
 and its pane; selecting a workspace focuses the workspace.
+
+**What a row says.** The tab's own name comes first — that is what you named
+the work and what you remember it by — and an agent's current summary follows it
+in dimmer text. A narrow row keeps the name and drops the summary; a tab with no
+name of its own lets the summary stand in for it.
+
+**Closing a tab.** `backspace` — the key macOS labels *delete* — erases the
+query first, then clears the filter, and once there is nothing left to unwind
+it arms the close instead. `delete` (fn+`⌫`) arms it whatever is typed. The
+footer says what is going; `enter` or `y` does it, `esc` or any other key calls
+it off, including the delete keys themselves, so a held key that repeats can
+never answer its own question. Rows are per agent but tabs are what close, so a
+tab running two agents says so before it takes both. Workspaces cannot be
+closed from the bar.
+
+**Running time.** The number next to a row is how long its process has been
+running: the agent session for an agent, the running command — or the shell
+itself, which reads as the age of the tab — for a plain tab. Herdr keeps no
+clocks, so this comes from the operating system, once per pane; a status that
+changed a minute ago on a two-hour-old session still says two hours.
 
 **How it is ordered.** With no query: recently visited rows first, then rows that
 want your attention (blocked, then done, then working), then the rest by
@@ -151,9 +176,12 @@ The bar is one short-lived process in a herdr popup pane. It reads the whole
 session in a single `session.snapshot` call over herdr's Unix socket (~15ms),
 re-reads it while it is open so statuses stay live, tails the selected pane with
 `pane.read` for the preview, and calls `tab.focus` / `agent.focus` /
-`workspace.focus` when you press Enter. If the socket is unavailable it falls
-back to the `herdr` CLI. Nothing runs in the background, and the only state it
-keeps is a list of recently visited rows under `HERDR_PLUGIN_STATE_DIR`.
+`workspace.focus` when you press Enter, or `tab.close` when you confirm a
+delete. Running times come from `pane.process_info` plus `ps`, one reading per
+pane on the way onto the screen and then ticked locally, because a start time
+never moves. If the socket is unavailable it falls back to the `herdr` CLI.
+Nothing runs in the background, and the only state it keeps is a list of
+recently visited rows under `HERDR_PLUGIN_STATE_DIR`.
 
 ## Development
 
@@ -162,7 +190,7 @@ git clone https://github.com/jeffarese/herdr-bar
 cd herdr-bar
 herdr plugin link .
 
-python3 -m unittest discover -s tests -t .      # 142 tests, no dependencies
+PYTHONPATH=src python3 -m unittest discover -s tests -t .   # 179, no deps
 python3 run.py --doctor                         # environment diagnostics
 python3 run.py --list                           # the rows, as JSON
 python3 scripts/demo.py                         # run against fixture data

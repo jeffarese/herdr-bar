@@ -38,6 +38,7 @@ class Item(object):
         "kind",
         "key",
         "title",
+        "detail",
         "subtitle",
         "workspace_id",
         "workspace_label",
@@ -56,6 +57,7 @@ class Item(object):
         kind: str,
         key: str,
         title: str,
+        detail: str = "",
         subtitle: str = "",
         workspace_id: str = "",
         workspace_label: str = "",
@@ -71,6 +73,7 @@ class Item(object):
         self.kind = kind
         self.key = key
         self.title = title
+        self.detail = detail
         self.subtitle = subtitle
         self.workspace_id = workspace_id
         self.workspace_label = workspace_label
@@ -85,7 +88,7 @@ class Item(object):
         # Searchable fields, title first. Each query term has to match one
         # field on its own -- matching across a flattened blob of everything
         # turns short queries into noise.
-        candidates: List[str] = [title, subtitle, workspace_label]
+        candidates: List[str] = [title, detail, subtitle, workspace_label]
         candidates.extend(str(part) for part in extra_terms if part)
         candidates.extend([agent or "", agent_name or "", status])
         if tab_number is not None:
@@ -207,16 +210,20 @@ def build_items(snapshot: Dict[str, Any]) -> List[Item]:
                     pane.get("cwd"),
                 )
             )
-            title = _first(
+            # What the agent is doing right now: the pane's own title, which
+            # Herdr keeps as a short summary of the current turn.
+            summary = _first(
                 pane.get("title"),
                 agent.get("title"),
                 pane.get("label"),
                 agent.get("terminal_title_stripped"),
                 pane.get("terminal_title_stripped"),
-                tab_label,
-                os.path.basename(cwd),
-                "agent",
             )
+            # The tab name is what people named the work, so it leads the row;
+            # the summary trails it. When there is no tab name the summary is
+            # all we have, so it becomes the title on its own.
+            title = _first(tab_label, summary, os.path.basename(cwd), "agent")
+            detail = summary if summary.lower() != title.lower() else ""
             agent_kind = _first(agent.get("display_agent"), agent.get("agent"))
             agent_name = _first(agent.get("name"))
             items.append(
@@ -224,6 +231,7 @@ def build_items(snapshot: Dict[str, Any]) -> List[Item]:
                     kind=KIND_AGENT,
                     key=pane_id or tab_id,
                     title=title,
+                    detail=detail,
                     subtitle=cwd,
                     workspace_id=workspace_id,
                     workspace_label=workspace_label,
@@ -235,7 +243,6 @@ def build_items(snapshot: Dict[str, Any]) -> List[Item]:
                     tab_number=tab_number,
                     focused=(pane_id == focused_pane_id)
                     or (len(tab_agents) == 1 and tab_id == focused_tab_id),
-                    extra_terms=(tab_label,),
                 )
             )
 

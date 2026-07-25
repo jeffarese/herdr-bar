@@ -8,12 +8,13 @@ from herdr_bar.mru import Recents
 from herdr_bar.render import (
     Row,
     compute_layout,
+    render_confirm,
     render_footer,
     render_input,
     render_row,
     scrollbar_column,
 )
-from herdr_bar.textutil import visible_width
+from herdr_bar.textutil import strip_ansi, visible_width
 from herdr_bar.theme import Theme
 
 from . import fixtures
@@ -27,6 +28,12 @@ class FakeClient(object):
 
     def read_pane(self, pane_id, lines, source="visible"):
         return fixtures.PREVIEW_TEXT
+
+    def pane_age(self, pane_id):
+        return fixtures.PANE_AGES.get(pane_id)
+
+    def close_tab(self, tab_id):
+        pass
 
 
 class FakeTerminal(object):
@@ -53,7 +60,7 @@ def frame_rows(frame, height):
     return rows
 
 
-def draw(width, height, query="", scope="all", config=None):
+def draw(width, height, query="", scope="all", config=None, confirm=False):
     bar = Bar(
         FakeClient(),
         config or Config({"selection_background": "237"}),
@@ -70,6 +77,10 @@ def draw(width, height, query="", scope="all", config=None):
     if bar._preview_pending:  # skip the debounce the draw just armed
         bar._preview_pending = (bar._preview_pending[0], 0.0)
     bar.pump_preview(bar._list_height)
+    while bar._age_queue:  # the loop would spread these over a few frames
+        bar.pump_ages()
+    if confirm:
+        bar.request_close()
     terminal.frames = []
     bar.draw(terminal)
     return bar, frame_rows("".join(terminal.frames), height)
@@ -101,6 +112,16 @@ class LayoutTest(unittest.TestCase):
                         "row %d overflows at %dx%d query=%r: %r"
                         % (index, width, height, query, row),
                     )
+
+    def test_an_armed_close_never_overflows_either(self):
+        for width, height in SIZES:
+            _, rows = draw(width, height, confirm=True)
+            for index, row in enumerate(rows):
+                self.assertLessEqual(
+                    visible_width(row),
+                    width,
+                    "row %d overflows at %dx%d: %r" % (index, width, height, row),
+                )
 
     def test_frame_never_exceeds_the_popup_height(self):
         for width, height in SIZES:
@@ -155,6 +176,23 @@ class ContentTest(unittest.TestCase):
         _, rows = draw(110, 20, "week")
         self.assertRegex(rows[-1], r"\d+/\d+")
 
+    def test_rows_carry_their_running_time(self):
+        _, rows = draw(140, 20)
+        self.assertRegex(strip_ansi("\n".join(rows)), r"\d+h\d\dm")
+
+    def test_the_footer_names_the_delete_key_that_works(self):
+        _, empty = draw(110, 20)
+        _, typed = draw(110, 20, "week")
+        self.assertIn("⌫ close", strip_ansi(empty[-1]))
+        self.assertIn("⌦ close", strip_ansi(typed[-1]))
+
+    def test_an_armed_close_replaces_the_hints(self):
+        bar, rows = draw(110, 20, confirm=True)
+        footer = strip_ansi(rows[-1])
+        self.assertIn("close", footer)
+        self.assertIn(bar.pending_close[1][:12], footer)
+        self.assertNotIn("scope", footer)
+
 
 class RowTest(unittest.TestCase):
     def setUp(self):
@@ -184,6 +222,31 @@ class RowTest(unittest.TestCase):
         row = render_row(self.theme, Row(item, (0, 1, 2)), 60, False, 0, True)
         self.assertEqual(visible_width(row), 60)
 
+    def test_the_summary_follows_the_tab_name_when_there_is_room(self):
+        item = next(i for i in self.items if i.detail)
+        plain = strip_ansi(render_row(self.theme, Row(item, ()), 120, False, 0, True))
+        self.assertIn(item.title + " — " + item.detail, plain)
+
+    def test_a_narrow_row_drops_the_summary_and_keeps_its_width(self):
+        item = next(i for i in self.items if i.detail)
+        for width in range(20, 120, 3):
+            row = render_row(self.theme, Row(item, ()), width, False, 0, True)
+            self.assertEqual(visible_width(row), width, "width %d" % width)
+        narrow = strip_ansi(render_row(self.theme, Row(item, ()), 34, False, 0, True))
+        self.assertNotIn(item.detail, narrow)
+
+    def test_running_time_joins_the_meta_without_overflowing(self):
+        item = self.items[0]
+        for width in range(20, 120, 7):
+            row = render_row(self.theme, Row(item, ()), width, False, 0, True, age=7440)
+            self.assertEqual(visible_width(row), width)
+        self.assertIn("2h04m", render_row(self.theme, Row(item, ()), 90, False, 0, True, 7440))
+
+    def test_a_pane_with_no_reading_shows_no_time(self):
+        item = self.items[0]
+        plain = strip_ansi(render_row(self.theme, Row(item, ()), 90, False, 0, True))
+        self.assertNotRegex(plain, r"\d+[hms]\b")
+
     def test_spinner_advances_for_working_rows(self):
         working = next(item for item in self.items if item.status == "working")
         first = render_row(self.theme, Row(working, ()), 60, False, 0, True)
@@ -204,6 +267,18 @@ class WidgetTest(unittest.TestCase):
         for width in (16, 24, 40, 80):
             row = render_footer(theme, width, hints, "12/34")
             self.assertLessEqual(visible_width(row), width)
+
+    def test_confirmation_fits_every_width(self):
+        theme = Theme()
+        for width in list(range(1, 20)) + [24, 40, 60, 80, 120]:
+            for agents in (1, 3):
+                row = render_confirm(theme, width, "library depth battery", agents)
+                self.assertLessEqual(visible_width(row), width, "width %d" % width)
+
+    def test_confirmation_warns_when_more_than_one_agent_goes(self):
+        theme = Theme()
+        self.assertIn("3 agents", render_confirm(theme, 80, "server", 3))
+        self.assertNotIn("agents", render_confirm(theme, 80, "server", 1))
 
     def test_scrollbar_only_when_the_list_overflows(self):
         self.assertEqual(scrollbar_column(5, 10, 0, 10), {})

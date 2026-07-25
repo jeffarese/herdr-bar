@@ -18,6 +18,8 @@ import socket
 import subprocess
 from typing import Any, Dict, List, Optional
 
+from .age import elapsed_seconds, pid_for
+
 
 class HerdrError(RuntimeError):
     """A Herdr request failed, or no server could be reached."""
@@ -161,6 +163,28 @@ class HerdrClient:
             if isinstance(text, str):
                 return text
         return ""
+
+    def process_info(self, pane_id: str) -> Dict[str, Any]:
+        result = self.call(
+            "pane.process_info",
+            {"pane_id": pane_id},
+            ["pane", "process-info", "--pane", pane_id],
+        )
+        info = result.get("process_info")
+        return info if isinstance(info, dict) else {}
+
+    def pane_age(self, pane_id: str) -> Optional[float]:
+        """Seconds the pane's process has been running, or None if unknown.
+
+        Herdr names the process, the operating system dates it; see ``age``.
+        """
+        pid = pid_for(self.process_info(pane_id))
+        if pid is None:
+            return None
+        return elapsed_seconds(pid)
+
+    def close_tab(self, tab_id: str) -> None:
+        self.call("tab.close", {"tab_id": tab_id}, ["tab", "close", tab_id])
 
     def focus_workspace(self, workspace_id: str) -> None:
         self.call(
