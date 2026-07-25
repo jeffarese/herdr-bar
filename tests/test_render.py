@@ -83,6 +83,7 @@ def draw(width, height, query="", scope="all", config=None, confirm=False):
     if confirm:
         bar.request_close()
     terminal.frames = []
+    bar.invalidate()  # these tests read whole rows, so ask for a whole frame
     bar.draw(terminal)
     return bar, frame_rows("".join(terminal.frames), height)
 

@@ -1,0 +1,103 @@
+{
+  "metrics": {
+    "changed_frames": 91,
+    "emitted_bytes": 35149,
+    "frames": 91,
+    "idle_calls_per_s": 1.5,
+    "latency_p50_ms": 0.387,
+    "latency_p99_ms": 0.664,
+    "needed_bytes": 39215,
+    "null_frames": 0,
+    "paint_ratio": 1.1157,
+    "scale_p50_ms": 3.339,
+    "scale_p99_ms": 4.619,
+    "unhandled_sequences": 0
+  },
+  "parts": {
+    "frames": 100.0,
+    "io": 96.6,
+    "latency": 100.0,
+    "paint": 100.0,
+    "scale": 96.9
+  },
+  "scenarios": {
+    "idle": {
+      "bytes_per_frame": 31,
+      "calls": 6,
+      "emitted_bytes": 1181,
+      "frames": 37,
+      "needed_bytes": 2086,
+      "null_frames": 0,
+      "p50_ms": 0.296,
+      "p99_ms": 0.357,
+      "paint_ratio": 1.7663
+    },
+    "narrow": {
+      "bytes_per_frame": 744,
+      "calls": 0,
+      "emitted_bytes": 3720,
+      "frames": 5,
+      "needed_bytes": 4045,
+      "null_frames": 0,
+      "p50_ms": 0.502,
+      "p99_ms": 0.536,
+      "paint_ratio": 1.0874
+    },
+    "navigate": {
+      "bytes_per_frame": 398,
+      "calls": 7,
+      "emitted_bytes": 8370,
+      "frames": 21,
+      "needed_bytes": 8893,
+      "null_frames": 0,
+      "p50_ms": 0.36,
+      "p99_ms": 0.47,
+      "paint_ratio": 1.0625
+    },
+    "open": {
+      "bytes_per_frame": 3986,
+      "calls": 0,
+      "emitted_bytes": 3986,
+      "frames": 1,
+      "needed_bytes": 2881,
+      "null_frames": 0,
+      "p50_ms": 0.689,
+      "p99_ms": 0.689,
+      "paint_ratio": 0.7228
+    },
+    "scale": {
+      "bytes_per_frame": 481,
+      "calls": 0,
+      "emitted_bytes": 3371,
+      "frames": 7,
+      "needed_bytes": 3818,
+      "null_frames": 0,
+      "p50_ms": 3.339,
+      "p99_ms": 4.619,
+      "paint_ratio": 1.1326
+    },
+    "scope": {
+      "bytes_per_frame": 739,
+      "calls": 0,
+      "emitted_bytes": 5918,
+      "frames": 8,
+      "needed_bytes": 7452,
+      "null_frames": 0,
+      "p50_ms": 0.392,
+      "p99_ms": 0.511,
+      "paint_ratio": 1.2592
+    },
+    "typing": {
+      "bytes_per_frame": 716,
+      "calls": 0,
+      "emitted_bytes": 8603,
+      "frames": 12,
+      "needed_bytes": 10040,
+      "null_frames": 0,
+      "p50_ms": 0.491,
+      "p99_ms": 0.664,
+      "paint_ratio": 1.167
+    }
+  },
+  "score": 99.2
+}

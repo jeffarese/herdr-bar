@@ -12,7 +12,7 @@ the exact matched positions for highlighting.
 
 from __future__ import annotations
 
-from typing import List, NamedTuple, Optional, Tuple
+from typing import Dict, List, NamedTuple, Optional, Tuple
 
 SCORE_MATCH = 16
 BONUS_BOUNDARY = 16
@@ -75,6 +75,36 @@ def _bonuses(text: str) -> List[int]:
     return out
 
 
+# Case folding and word boundaries depend on the field alone, but the matcher
+# wants both once per query term per field -- hundreds of times over a single
+# keystroke, for strings that have not changed since the bar opened. Entries
+# are keyed by whole fields, so the cache is bounded by the size of the
+# session rather than by how long the bar stays open; the cap is there for the
+# pathological case, and dropping the lot costs one keystroke of recompute.
+_PREPARED: Dict[str, Tuple[str, List[int]]] = {}
+_PREPARED_LIMIT = 4096
+
+
+def _prepare(text: str) -> Tuple[str, List[int]]:
+    """The folded text and its per-character bonuses. Never mutated by callers."""
+    found = _PREPARED.get(text)
+    if found is not None:
+        return found
+    folded = text.lower()
+    if len(folded) != len(text):
+        # A handful of characters grow when they fold -- "İ" becomes an i and
+        # a combining dot -- which slides every later position out of step
+        # with the text the bonuses and the highlights describe. Fold those
+        # one character at a time and keep the leading one, so a search still
+        # finds them and lands its highlight on the right cell.
+        folded = "".join(char.lower()[0] for char in text)
+    found = (folded, _bonuses(text))
+    if len(_PREPARED) >= _PREPARED_LIMIT:
+        _PREPARED.clear()
+    _PREPARED[text] = found
+    return found
+
+
 def match(query: str, text: str) -> Optional[Match]:
     """Score one term against one string, or return None when it does not match.
 
@@ -87,68 +117,90 @@ def match(query: str, text: str) -> Optional[Match]:
         return None
 
     fold = query.islower()
-    haystack = text.lower() if fold else text
-    needle = query.lower() if fold else query
+    if fold:
+        haystack, bonus = _prepare(text)
+        needle = query.lower()
+    else:
+        haystack, bonus = text, _prepare(text)[1]
+        needle = query
 
     # Cheap rejection before the DP: every query character must appear in order.
+    locate = haystack.find
     cursor = 0
     for char in needle:
-        cursor = haystack.find(char, cursor)
+        cursor = locate(char, cursor)
         if cursor < 0:
             return None
         cursor += 1
 
     n = len(haystack)
     m = len(needle)
-    bonus = _bonuses(text)
 
-    scores: List[List[int]] = []
-    parents: List[List[int]] = []
+    # The scoring loop is the hottest thing in the bar -- every field of every
+    # item, on every keystroke -- so the constants it reads are bound to locals
+    # and the sparse first row is found with str.find rather than a scan.
+    neg = _NEG
+    gap_open = PENALTY_GAP_START
+    gap_more = PENALTY_GAP_EXTENSION
+    step = SCORE_MATCH
+    adjacent_bonus = BONUS_CONSECUTIVE
 
-    row = [_NEG] * n
-    back = [-1] * n
-    first = needle[0]
-    for i in range(n):
-        if haystack[i] == first:
-            row[i] = SCORE_MATCH + bonus[i] * BONUS_FIRST_CHAR_MULTIPLIER
-    scores.append(row)
-    parents.append(back)
+    # Nothing outside the first place the query could start and the last place
+    # it could end can take part in a match, and for a term that lands early in
+    # a long field that is most of the string. The window is in the text's own
+    # coordinates, so the boundary bonuses and the reported positions are
+    # untouched -- it only stops the loop walking cells that cannot score.
+    low = locate(needle[0])
+    high = haystack.rfind(needle[m - 1])
+
+    row = [neg] * n
+    ceiling = high - m + 1
+    at = low
+    while 0 <= at <= ceiling:
+        row[at] = step + bonus[at] * BONUS_FIRST_CHAR_MULTIPLIER
+        at = locate(needle[0], at + 1)
+    scores: List[List[int]] = [row]
+    parents: List[List[int]] = [[-1] * n]
 
     for j in range(1, m):
         qchar = needle[j]
         previous = scores[j - 1]
-        row = [_NEG] * n
+        row = [neg] * n
         back = [-1] * n
+        ceiling = high - m + 1 + j
         # Running best over every earlier match of the previous query
         # character, decayed by the gap penalty as the cursor moves right.
-        carry = _NEG
+        carry = neg
         carry_from = -1
         carry_gap = 0
-        for i in range(1, n):
-            if carry > _NEG:
-                carry += PENALTY_GAP_START if carry_gap == 0 else PENALTY_GAP_EXTENSION
+        landed = False
+        for i in range(low + 1, ceiling + 1):
+            if carry > neg:
+                carry += gap_open if carry_gap == 0 else gap_more
                 carry_gap += 1
             adjacent = previous[i - 1]
-            if adjacent > _NEG and adjacent >= carry:
+            if adjacent > neg and adjacent >= carry:
                 carry = adjacent
                 carry_from = i - 1
                 carry_gap = 0
-            if carry == _NEG or haystack[i] != qchar:
+            if carry == neg or haystack[i] != qchar:
                 continue
             gained = bonus[i]
-            if carry_gap == 0:
-                gained = max(gained, BONUS_CONSECUTIVE)
-            row[i] = carry + SCORE_MATCH + gained
+            if carry_gap == 0 and gained < adjacent_bonus:
+                gained = adjacent_bonus
+            row[i] = carry + step + gained
             back[i] = carry_from
-        if all(value == _NEG for value in row):
+            landed = True
+        if not landed:
             return None
         scores.append(row)
         parents.append(back)
 
     final = scores[m - 1]
-    best_index = max(range(n), key=lambda i: final[i])
-    if final[best_index] == _NEG:
+    best = max(final)
+    if best == _NEG:
         return None
+    best_index = final.index(best)
 
     positions: List[int] = []
     index = best_index

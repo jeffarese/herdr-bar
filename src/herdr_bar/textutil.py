@@ -4,13 +4,18 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from typing import List, Sequence, Tuple
+from typing import Dict, List, Sequence, Tuple
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]")
 _WIDE = ("W", "F")
 
+# Measuring a character means two unicodedata lookups, and a frame measures
+# tens of thousands of them -- nearly all drawn from the same small alphabet.
+# The answer never changes, so it is only ever worked out once.
+_WIDTHS: Dict[str, int] = {}
 
-def char_width(char: str) -> int:
+
+def _measure(char: str) -> int:
     if unicodedata.combining(char):
         return 0
     code = ord(char)
@@ -21,8 +26,26 @@ def char_width(char: str) -> int:
     return 1
 
 
+def char_width(char: str) -> int:
+    width = _WIDTHS.get(char)
+    if width is None:
+        width = _measure(char)
+        _WIDTHS[char] = width
+    return width
+
+
 def display_width(text: str) -> int:
-    return sum(char_width(char) for char in text)
+    if text.isascii() and text.isprintable():
+        return len(text)  # the overwhelmingly common case, answered in C
+    widths = _WIDTHS
+    total = 0
+    for char in text:
+        width = widths.get(char)
+        if width is None:
+            width = _measure(char)
+            widths[char] = width
+        total += width
+    return total
 
 
 def strip_ansi(text: str) -> str:

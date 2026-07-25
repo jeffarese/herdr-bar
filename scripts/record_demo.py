@@ -316,6 +316,9 @@ class Recorder(object):
         self.bar.pump_ages()
 
         self.screen.buffer = []
+        # Every recorded frame stands alone, so the bar paints all of it: the
+        # flattener below reads whole rows, not the diffs the terminal gets.
+        self.bar.invalidate()
         self.bar.draw(self.screen)
         rows = flatten("".join(self.screen.buffer), ROWS)
 

@@ -1,10 +1,14 @@
-"""Paint the bar.
+"""Compose the bar's rows.
 
 Everything is drawn as full rows into the popup's inner area: Herdr already
 draws the popup border, so the bar stays borderless and full-bleed. Rows
 are composed as (role, text) segments, measured in display columns, and only
 then turned into escape sequences -- which keeps truncation honest for CJK and
 emoji, and makes the layout testable by stripping the colors back out.
+
+Composing a whole row every time is the simple thing to do, and cheap; getting
+those rows onto the screen without resending the ones that did not move is
+``paint``'s job, not this module's.
 """
 
 from __future__ import annotations
@@ -486,14 +490,3 @@ def scrollbar_column(total: int, visible: int, offset: int, height: int) -> Dict
     for row in range(height):
         marks[row] = SCROLL_THUMB if start <= row < start + thumb else SCROLL_TRACK
     return marks
-
-
-def compose(rows: Sequence[str]) -> str:
-    """Position and paint every row, clearing the rest of each line."""
-    out: List[str] = ["\x1b[H"]
-    for index, row in enumerate(rows):
-        out.append("\x1b[%d;1H" % (index + 1))
-        out.append(row)
-        out.append("\x1b[0m\x1b[K")
-    out.append("\x1b[J")
-    return "".join(out)

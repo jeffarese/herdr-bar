@@ -29,6 +29,12 @@ jobs:
           PYTHONPATH: src
       - name: Static frame renders
         run: python scripts/demo.py --frame --plain --size 100x18
+      # The paint metrics are byte-identical on every version and platform we
+      # build for, so this is a real gate rather than a weather report.
+      - name: Render score
+        run: python scripts/bench.py --check
+        env:
+          PYTHONPATH: src
       - name: Manifest parses
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.13'
         run: |

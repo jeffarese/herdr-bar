@@ -103,6 +103,7 @@ def main(argv):
         while bar._age_queue:  # the loop would spread these over a few frames
             bar.pump_ages()
         terminal.buffer = []
+        bar.invalidate()  # the flattener below wants a whole frame, not a diff
         bar.draw(terminal)
         frame = _flatten("".join(terminal.buffer), height)
         if "--plain" in argv:

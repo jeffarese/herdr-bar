@@ -12,6 +12,7 @@ from .fuzzy import match, split_query
 from .items import KIND_AGENT, KIND_SPACE, KIND_TAB, Item, build_items
 from .keys import KEY, MOUSE, PASTE, PRESS, TEXT, WHEEL_DOWN, WHEEL_UP, Event, KeyDecoder
 from .mru import Recents
+from .paint import Painter
 from .render import Row, compute_layout, scrollbar_column
 from .term import Terminal
 from .textutil import pad, sanitize
@@ -37,14 +38,24 @@ PLACEHOLDER = "jump to a tab or agent…    @ agents   $ shells   ! needs you"
 PLACEHOLDER_SHORT = "jump to a tab or agent…"
 
 
+_UNSCORED = object()
+
+
 def score_item(
-    terms: Sequence[str], fields: Sequence[str]
+    terms: Sequence[str],
+    fields: Sequence[str],
+    memo: Optional[Dict[Tuple[str, str], object]] = None,
 ) -> Optional[Tuple[int, Dict[int, Tuple[int, ...]]]]:
     """Score one row: every term must match one field, best field wins.
 
     Positions come back keyed by the field that won the term, so a caller can
     light up whichever of those fields it actually draws -- and terms that were
     answered by a field nobody can see simply have nowhere to land.
+
+    ``memo`` is an optional scratch dict shared across the rows of one pass.
+    Whole fields repeat across a session -- every agent is "claude", every
+    other one is "working" -- and scoring the same term against the same string
+    twice cannot give a different answer.
     """
     total = 0
     found_positions: Dict[int, List[int]] = {}
@@ -53,7 +64,14 @@ def score_item(
         best_index = -1
         best_positions: Tuple[int, ...] = ()
         for index, field in enumerate(fields):
-            found = match(term, field)
+            if memo is None:
+                found = match(term, field)
+            else:
+                key = (term, field)
+                found = memo.get(key, _UNSCORED)
+                if found is _UNSCORED:
+                    found = match(term, field)
+                    memo[key] = found
             if found is None:
                 continue
             value = found.score + (TITLE_BONUS if index == 0 else 0)
@@ -101,6 +119,7 @@ class Bar(object):
         self._dirty = True
         self._list_top = 2
         self._list_height = 10
+        self._painter = Painter()
 
     # -- data ---------------------------------------------------------------
 
@@ -162,8 +181,9 @@ class Bar(object):
             return [Row(item, ()) for item in self._resting_order(candidates)]
 
         scored: List[Tuple[int, int, int, int, Row]] = []
+        memo: Dict[Tuple[str, str], object] = {}
         for item in candidates:
-            found = score_item(terms, item.fields)
+            found = score_item(terms, item.fields, memo)
             if found is None:
                 continue
             score, by_field = found
@@ -567,9 +587,22 @@ class Bar(object):
                 rows.append(" " + render.render_rule(self.theme, layout.inner_width))
             rows.append(" " + self._footer(layout.inner_width))
 
-        terminal.write(render.compose(rows[:height]))
-        terminal.flush()
+        payload = self._painter.frame(rows, width, height)
+        if payload:
+            # A frame with nothing to say says nothing: no bytes, no syscall.
+            terminal.write(payload)
+            terminal.flush()
         self._dirty = False
+
+    def invalidate(self) -> None:
+        """Forget what is on screen, so the next draw repaints all of it.
+
+        The bar owns the alt screen while it is up, which is what lets the
+        painter trust its own model of it. A resize -- or anything else that
+        writes over the top -- is where that stops being true.
+        """
+        self._painter.reset()
+        self._dirty = True
 
     def _scroll_into_view(self, height: int) -> None:
         if not self.rows:
@@ -670,7 +703,7 @@ class Bar(object):
                     return None
 
             if terminal.take_resize():
-                self._dirty = True
+                self.invalidate()
 
             now = time.monotonic()
             if now - self._last_refresh >= self.config.refresh_ms / 1000.0:
