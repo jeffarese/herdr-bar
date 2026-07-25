@@ -36,6 +36,7 @@ import busy_session  # noqa: E402
 from herdr_bar import app as app_module  # noqa: E402
 from herdr_bar.app import SPINNER_INTERVAL, Bar  # noqa: E402
 from herdr_bar.config import Config  # noqa: E402
+from herdr_bar.keys import KEY, TEXT, Event  # noqa: E402
 from herdr_bar.mru import Recents  # noqa: E402
 from herdr_bar.textutil import char_width  # noqa: E402
 from herdr_bar.theme import Theme  # noqa: E402
@@ -105,6 +106,8 @@ KEYCAPS = {
     "tab": "⇥",
     "enter": "⏎",
     "backspace": "⌫",
+    "delete": "⌦",
+    "y": "y",
     "esc": "esc",
     "ctrl+u": "^U",
     "ctrl+o": "^O",
@@ -163,6 +166,17 @@ class DemoClient(object):
         if pane_id in self.overrides:
             return self.overrides[pane_id]
         return busy_session.PREVIEWS.get(pane_id, busy_session.FALLBACK_PREVIEW)
+
+    def pane_age(self, pane_id):
+        return busy_session.AGES.get(pane_id)
+
+    def close_tab(self, tab_id):
+        """Take the tab out of the session, the way herdr would."""
+        self.state["tabs"] = [tab for tab in self.state["tabs"] if tab.get("tab_id") != tab_id]
+        self.state["panes"] = [pane for pane in self.state["panes"] if pane.get("tab_id") != tab_id]
+        self.state["agents"] = [
+            agent for agent in self.state["agents"] if agent.get("tab_id") != tab_id
+        ]
 
     def set_status(self, pane_id: str, status: str) -> None:
         """Move one agent to another state, the way a live session would."""
@@ -257,10 +271,14 @@ class Recorder(object):
             self._tick()
 
     def key(self, name: str, dwell: float = 0.34) -> None:
-        result = self.bar.handle_key(name)
-        if result == "confirm" and self.bar.rows:
-            item = self.bar.selected_item()
-            self.outcome = "jumped to %s" % item.title
+        if self.bar.pending_close is not None:
+            # An armed close owns the keyboard, exactly as the run loop has it.
+            self.bar.handle_confirm(Event(KEY, name))
+        else:
+            result = self.bar.handle_key(name)
+            if result == "confirm" and self.bar.rows:
+                item = self.bar.selected_item()
+                self.outcome = "jumped to %s" % item.title
         self.chip = KEYCAPS.get(name, name)
         self.chip_at = self.clock.now
         self.hold(dwell)
@@ -271,7 +289,10 @@ class Recorder(object):
 
     def type(self, text: str, dwell: float = 0.13) -> None:
         for char in text:
-            self.bar.insert(char)
+            if self.bar.pending_close is not None:
+                self.bar.handle_confirm(Event(TEXT, char))
+            else:
+                self.bar.insert(char)
             self.chip = char
             self.chip_at = self.clock.now
             self.hold(dwell)
@@ -292,6 +313,7 @@ class Recorder(object):
                 self.bar.tick += 1
 
         self.bar.pump_preview(self.bar._list_height)
+        self.bar.pump_ages()
 
         self.screen.buffer = []
         self.bar.draw(self.screen)
@@ -322,6 +344,9 @@ def perform(recorder: Recorder) -> None:
     recorder.say("one chord, and the whole session is a list")
     recorder.hold(1.3)
 
+    recorder.say("the tab you named, what its agent is doing, how long it has run")
+    recorder.hold(1.9)
+
     recorder.say("needs-you first, then done · where you just were floats up")
     recorder.hold(1.5)
 
@@ -333,10 +358,15 @@ def perform(recorder: Recorder) -> None:
     recorder.repeat("down", 7, 0.19)
     recorder.hold(1.1)
 
-    recorder.say("type a few letters · fuzzy, and it shows you what matched")
+    recorder.say("type a few letters · fuzzy, and it underlines what matched")
     recorder.key("ctrl+u", 0.2)
     recorder.type("invo", 0.16)
-    recorder.hold(2.0)
+    recorder.hold(2.2)
+
+    recorder.say("wherever it landed · the tab name here, the summary there")
+    recorder.key("ctrl+u", 0.22)
+    recorder.type("cache api", 0.15)
+    recorder.hold(2.2)
 
     recorder.say("terms match independently · title, repo, branch, agent")
     recorder.key("ctrl+u", 0.22)
@@ -367,7 +397,15 @@ def perform(recorder: Recorder) -> None:
     recorder.restatus("w1:p7", "blocked")
     recorder.hold(2.3)
 
+    recorder.say("⌦ closes a tab · the footer asks first, esc calls it off")
+    recorder.key("ctrl+u", 0.25)
+    recorder.type("logs", 0.16)
+    recorder.hold(0.9)
+    recorder.key("delete", 1.7)
+    recorder.key("esc", 1.1)
+
     recorder.say("⏎ jumps · tab focused, pane focused, popup gone")
+    recorder.key("ctrl+u", 0.22)
     recorder.type("limit", 0.16)
     recorder.hold(1.3)
     recorder.key("enter", 0.1)
@@ -381,20 +419,22 @@ def perform(recorder: Recorder) -> None:
 
 
 class Cell(object):
-    __slots__ = ("char", "fg", "bg", "bold")
+    __slots__ = ("char", "fg", "bg", "bold", "underline")
 
-    def __init__(self, char: str, fg, bg, bold: bool) -> None:
+    def __init__(self, char: str, fg, bg, bold: bool, underline: bool = False) -> None:
         self.char = char
         self.fg = fg
         self.bg = bg
         self.bold = bold
+        self.underline = underline
 
 
 def parse_row(row: str, cols: int) -> List[Cell]:
-    """Turn one escape-laden row into cells, honouring 38/48/1/7 and reset."""
+    """Turn one escape-laden row into cells, honouring 38/48/1/4/7 and reset."""
     fg: Optional[Tuple[int, int, int]] = None
     bg: Optional[Tuple[int, int, int]] = None
     bold = False
+    underline = False
     reverse = False
 
     cells: List[Cell] = []
@@ -403,7 +443,9 @@ def parse_row(row: str, cols: int) -> List[Cell]:
         if row.startswith("\x1b[", index):
             match = SGR_RE.match(row, index)
             if match:
-                fg, bg, bold, reverse = apply_sgr(match.group(1), fg, bg, bold, reverse)
+                fg, bg, bold, underline, reverse = apply_sgr(
+                    match.group(1), fg, bg, bold, underline, reverse
+                )
                 index = match.end()
                 continue
             end = index + 2
@@ -419,25 +461,29 @@ def parse_row(row: str, cols: int) -> List[Cell]:
         back = bg
         if reverse:
             front, back = (back if back is not None else PANEL_BG), front
-        cells.append(Cell(char, front, back, bold))
+        cells.append(Cell(char, front, back, bold, underline))
         if char_width(char) == 2:
-            cells.append(Cell("", front, back, bold))
+            cells.append(Cell("", front, back, bold, underline))
     while len(cells) < cols:
         cells.append(Cell(" ", DEFAULT_FG, None, False))
     return cells[:cols]
 
 
-def apply_sgr(params: str, fg, bg, bold: bool, reverse: bool):
+def apply_sgr(params: str, fg, bg, bold: bool, underline: bool, reverse: bool):
     codes = [int(part) if part else 0 for part in (params or "0").split(";")]
     index = 0
     while index < len(codes):
         code = codes[index]
         if code == 0:
-            fg, bg, bold, reverse = None, None, False, False
+            fg, bg, bold, underline, reverse = None, None, False, False, False
         elif code == 1:
             bold = True
         elif code == 22:
             bold = False
+        elif code == 4:
+            underline = True
+        elif code == 24:
+            underline = False
         elif code == 7:
             reverse = True
         elif code == 27:
@@ -467,7 +513,7 @@ def apply_sgr(params: str, fg, bg, bold: bool, reverse: bool):
         elif 100 <= code <= 107:
             bg = PALETTE[code - 100 + 8]
         index += 1
-    return fg, bg, bold, reverse
+    return fg, bg, bold, underline, reverse
 
 
 def find_font(bold: bool):
@@ -504,12 +550,65 @@ def ui_font(size: int, bold: bool = False):
     raise SystemExit("no UI font found")
 
 
+_COVERAGE: Dict[Tuple[int, str], bool] = {}
+
+
+def covers(font, char: str) -> bool:
+    """Whether a font has a real glyph for a character.
+
+    Pillow draws .notdef -- an empty box -- for anything missing and says
+    nothing about it, which is how ⇥ and ⌦ ended up as tofu in the captions.
+    Comparing against a private-use codepoint no font claims spots it.
+    """
+    if char.isspace():
+        return True
+    key = (id(font), char)
+    if key not in _COVERAGE:
+        try:
+            missing = bytes(font.getmask("", mode="1"))
+            _COVERAGE[key] = bytes(font.getmask(char, mode="1")) != missing
+        except Exception:  # pragma: no cover - font backends vary
+            _COVERAGE[key] = True
+    return _COVERAGE[key]
+
+
+def runs_by_font(text: str, font, fallback):
+    """Split text into runs, each with a font that can actually draw it."""
+    out: List[Tuple[str, object]] = []
+    for char in text:
+        chosen = font if covers(font, char) else fallback
+        if out and out[-1][1] is chosen:
+            out[-1] = (out[-1][0] + char, chosen)
+        else:
+            out.append((char, chosen))
+    return out
+
+
+def draw_text(draw, xy, text: str, font, fallback, fill) -> float:
+    """Draw a line in `font`, borrowing `fallback` for what it cannot render."""
+    x, y = xy
+    for run, run_font in runs_by_font(text, font, fallback):
+        draw.text((x, y), run, font=run_font, fill=fill)
+        x += draw.textlength(run, font=run_font)
+    return x - xy[0]
+
+
+def text_length(draw, text: str, font, fallback) -> float:
+    return sum(
+        draw.textlength(run, font=run_font) for run, run_font in runs_by_font(text, font, fallback)
+    )
+
+
 class Painter(object):
     def __init__(self, compact: bool = False) -> None:
         self.font = find_font(False)
         self.font_bold = find_font(True)
         self.caption_font = ui_font(CAPTION_SIZE)
         self.chip_font = ui_font(CHIP_SIZE, bold=True)
+        # The keycaps in the captions are terminal glyphs; the UI font has no
+        # idea what ⇥ or ⌦ are, so the monospace face stands in for them.
+        self.caption_fallback = find_font(False).font_variant(size=CAPTION_SIZE)
+        self.chip_fallback = find_font(False).font_variant(size=CHIP_SIZE)
 
         self.cell_w = int(math.ceil(self.font.getlength("M")))
         self.cell_h = int(math.ceil(FONT_SIZE * LINE_RATIO))
@@ -567,6 +666,18 @@ class Painter(object):
                     )
                 run_start = run_end
             for column, cell in enumerate(cells):
+                if cell.underline:
+                    # Drawn per cell so a run stays continuous across spaces.
+                    rule_y = y + self.cell_h - max(2, self.cell_h // 12)
+                    draw.rectangle(
+                        (
+                            origin_x + column * self.cell_w,
+                            rule_y,
+                            origin_x + (column + 1) * self.cell_w - 1,
+                            rule_y + max(1, self.cell_h // 18),
+                        ),
+                        fill=cell.fg,
+                    )
                 if cell.char in ("", " "):
                     continue
                 draw.text(
@@ -578,14 +689,23 @@ class Painter(object):
 
         caption_y = bottom + 34
         if frame.outcome:
-            draw.text(
+            draw_text(
+                draw,
                 (left + 4, caption_y),
                 frame.outcome,
-                font=self.caption_font,
-                fill=BASE16[12],
+                self.caption_font,
+                self.caption_fallback,
+                BASE16[12],
             )
         elif frame.caption:
-            draw.text((left + 4, caption_y), frame.caption, font=self.caption_font, fill=CAPTION_FG)
+            draw_text(
+                draw,
+                (left + 4, caption_y),
+                frame.caption,
+                self.caption_font,
+                self.caption_fallback,
+                CAPTION_FG,
+            )
 
         if frame.chip:
             self._chip(draw, frame, right, caption_y)
@@ -593,7 +713,7 @@ class Painter(object):
 
     def _chip(self, draw, frame: Frame, right: int, y: int) -> None:
         label = frame.chip
-        text_w = int(draw.textlength(label, font=self.chip_font))
+        text_w = int(text_length(draw, label, self.chip_font, self.chip_fallback))
         width = max(52, text_w + 30)
         height = 46
         box = (right - width + 4, y - 8, right + 4, y - 8 + height)
@@ -601,11 +721,13 @@ class Painter(object):
         fill = blend(CANVAS_BG, CHIP_BG, fade)
         edge = blend(CANVAS_BG, CHIP_EDGE, fade)
         draw.rounded_rectangle(box, radius=11, fill=fill, outline=edge, width=2)
-        draw.text(
+        draw_text(
+            draw,
             (box[0] + (width - text_w) / 2, y + 1),
             label,
-            font=self.chip_font,
-            fill=blend(CANVAS_BG, CHIP_FG, fade),
+            self.chip_font,
+            self.chip_fallback,
+            blend(CANVAS_BG, CHIP_FG, fade),
         )
 
 

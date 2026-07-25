@@ -23,29 +23,43 @@ _SPACES = [
     ("lumen", "w3", 3, "working", "feat/preview-tail"),
 ]
 
-# (workspace, tab number, label, status, agent, agent name, cwd suffix)
+# (workspace, tab number, label, summary, status, agent, agent name, cwd suffix)
+#
+# The label is what someone named the tab; the summary is what the agent is
+# doing in it this minute, which is what herdr keeps as the pane title. Rows
+# lead with the first and trail with the second, so the two say different
+# things here -- a fixture where they agreed would hide half the row.
 _ROWS = [
     # atlas -- the app being worked on
-    ("w1", 1, "server", "none", None, None, ""),
-    ("w1", 2, "Redesign the invoice list empty state", "working", "claude", None, ""),
-    ("w1", 3, "Check the invoice email copy", "working", "claude", None, ""),
-    ("w1", 4, "checkout copy unclear", "blocked", "codex", None, "/web"),
-    ("w1", 5, "search index rebuild", "done", "claude", "indexer", "/.worktrees/search"),
-    ("w1", 6, "logs", "none", None, None, ""),
-    ("w1", 7, "Tighten rate limit buckets", "working", "codex", None, ""),
-    ("w1", 8, "Fix stale invoice cache", "blocked", "claude", None, "/api"),
-    ("w1", 9, "tests", "none", None, None, ""),
+    ("w1", 1, "server", "", "none", None, None, ""),
+    ("w1", 2, "invoices", "Redesign the invoice list empty state", "working", "claude", None, ""),
+    ("w1", 3, "receipts", "Check the receipt email copy", "working", "claude", None, ""),
+    ("w1", 4, "checkout", "One formatter, or per surface?", "blocked", "codex", None, "/web"),
+    (
+        "w1",
+        5,
+        "search",
+        "Rebuilt the index with the new analyzer",
+        "done",
+        "claude",
+        "indexer",
+        "/.worktrees/search",
+    ),
+    ("w1", 6, "logs", "", "none", None, None, ""),
+    ("w1", 7, "rate limits", "Tighten the rate limit buckets", "working", "codex", None, ""),
+    ("w1", 8, "api", "The invoice cache ignores the timezone", "blocked", "claude", None, "/api"),
+    ("w1", 9, "tests", "", "none", None, None, ""),
     # harbor -- a second checkout, mid-review
-    ("w2", 1, "retry queue backoff", "blocked", "codex", None, ""),
-    ("w2", 2, "migrations", "idle", "gemini", None, ""),
-    ("w2", 3, "Drain the export queue", "working", "claude", "backfill", ""),
-    ("w2", 4, "psql", "none", None, None, ""),
-    ("w2", 5, "Rewrite webhook dedupe", "done", "codex", None, ""),
+    ("w2", 1, "retry queue", "Cap the backoff, or drop after 8?", "blocked", "codex", None, ""),
+    ("w2", 2, "migrations", "alembic upgrade head", "idle", "gemini", None, ""),
+    ("w2", 3, "export", "Drain the export queue", "working", "claude", "backfill", ""),
+    ("w2", 4, "psql", "", "none", None, None, ""),
+    ("w2", 5, "webhooks", "Rewrite the webhook dedupe", "done", "codex", None, ""),
     # lumen -- a terminal UI, hence the socket and decoder work
-    ("w3", 1, "Tail preview through the socket", "working", "claude", None, ""),
-    ("w3", 2, "flaky decoder test", "blocked", "claude", None, ""),
-    ("w3", 3, "lint", "none", None, None, ""),
-    ("w3", 4, "Document the keyboard table", "working", "gemini", None, "/docs"),
+    ("w3", 1, "preview tail", "Tail the preview through the socket", "working", "claude", None, ""),
+    ("w3", 2, "decoder", "Chasing a flaky decoder test", "blocked", "claude", None, ""),
+    ("w3", 3, "lint", "", "none", None, None, ""),
+    ("w3", 4, "docs", "Document the keyboard table", "working", "gemini", None, "/docs"),
 ]
 
 FOCUSED_TAB = "w1:t3"
@@ -75,7 +89,7 @@ def snapshot() -> Dict[str, Any]:
     panes: List[Dict[str, Any]] = []
 
     labels = {space[1]: space[0] for space in _SPACES}
-    for workspace_id, number, label, status, agent, agent_name, suffix in _ROWS:
+    for workspace_id, number, label, summary, status, agent, agent_name, suffix in _ROWS:
         tab_id = "%s:t%d" % (workspace_id, number)
         pane_id = "%s:p%d" % (workspace_id, number)
         cwd = "%s/workspace/%s%s" % (HOME, labels[workspace_id], suffix)
@@ -109,7 +123,10 @@ def snapshot() -> Dict[str, Any]:
             if agent_name:
                 entry["name"] = agent_name
             agents.append(entry)
-            panes.append(dict(record, agent=agent, agent_status=status))
+            pane = dict(record, agent=agent, agent_status=status)
+            if summary:
+                pane["title"] = summary
+            panes.append(pane)
         else:
             panes.append(record)
 
@@ -130,6 +147,30 @@ def snapshot() -> Dict[str, Any]:
 # Where the demo has "been" before the bar opened. Recents float to the top of
 # the resting list, which is the behaviour worth showing on frame one.
 RECENTS = ["w2:p1", "w1:p4", "w3:p2"]
+
+
+# How long each pane's process has been up, in seconds. The real bar asks the
+# operating system; here the numbers are fixed so a recording is reproducible.
+AGES = {
+    "w1:p1": 4 * 3600 + 12 * 60,
+    "w1:p2": 51 * 60,
+    "w1:p3": 8 * 60 + 20,
+    "w1:p4": 2 * 3600 + 4 * 60,
+    "w1:p5": 37 * 60,
+    "w1:p6": 4 * 3600 + 11 * 60,
+    "w1:p7": 22 * 60,
+    "w1:p8": 3 * 3600 + 26 * 60,
+    "w1:p9": 96,
+    "w2:p1": 5 * 3600 + 48 * 60,
+    "w2:p2": 21 * 60,
+    "w2:p3": 14 * 60,
+    "w2:p4": 63 * 60,
+    "w2:p5": 2 * 3600 + 40 * 60,
+    "w3:p1": 9 * 60,
+    "w3:p2": 47 * 60,
+    "w3:p3": 12,
+    "w3:p4": 1 * 3600 + 18 * 60,
+}
 
 
 # What the preview column tails, per pane. Written so the interesting line is
