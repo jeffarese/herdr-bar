@@ -129,8 +129,11 @@ changed a minute ago on a two-hour-old session still says two hours.
 want your attention (blocked, then done, then working), then the rest by
 workspace and tab number. The tab you are currently in is never first. With a
 query: best fuzzy score wins, ties broken by recency and then status. Matches in
-the title outrank matches in a working directory or an agent name, and only title
-matches are highlighted.
+the title outrank matches in a working directory or an agent name. Matched
+characters are drawn bold, colored and underlined wherever the row shows the
+text they landed in — the tab name, the summary, the directory, the agent — so a
+subsequence scattered across a sentence still reads as one, and a row that
+matched on something off screen simply shows no highlight.
 
 ## Configuring
 
@@ -164,7 +167,10 @@ Optional. Write `config.json` in the plugin config directory
 | `colors` | `{}` | role → `#rrggbb`, an ANSI name (`bright_blue`), or 0-255. Roles: `accent`, `match`, `text`, `muted`, `blocked`, `working`, `done`, `idle`, `unknown` |
 
 Colors default to plain ANSI, so the bar follows whatever theme your terminal
-already uses.
+already uses. The exception is `muted` — the second tier of text, used for
+summaries, agent names and running times — which is a gray picked from the
+terminal's own background (lighter on a dark theme, darker on a light one) so it
+stays readable; `unknown` is the dimmer tier below it, for separators and rules.
 
 Popup size lives in herdr, not here. Override the manifest's `74%` × `62%` per
 invocation with `herdr plugin pane open --plugin herdr-bar --entrypoint bar

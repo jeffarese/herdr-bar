@@ -50,6 +50,7 @@ class Item(object):
         "tab_number",
         "focused",
         "fields",
+        "detail_field",
     )
 
     def __init__(
@@ -101,6 +102,9 @@ class Item(object):
                 seen.add(key_text)
                 fields.append(candidate)
         self.fields = tuple(fields)
+        # Which searchable field the summary ended up as, so a match there can
+        # be highlighted where it is drawn. -1 when there is no summary.
+        self.detail_field = fields.index(detail) if detail and detail in fields else -1
 
     @property
     def status_rank(self) -> int:

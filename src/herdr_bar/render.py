@@ -10,12 +10,12 @@ emoji, and makes the layout testable by stripping the colors back out.
 from __future__ import annotations
 
 import os
-from typing import Dict, List, NamedTuple, Optional, Sequence, Tuple
+from typing import Dict, List, Mapping, NamedTuple, Optional, Sequence, Tuple
 
 from .age import format_age
 from .items import KIND_SPACE, Item
 from .textutil import display_width, pad, truncate, truncate_middle, window_positions
-from .theme import RESET, Theme
+from .theme import BOLD, RESET, UNDERLINE, Theme
 
 PROMPT = "❯"
 SELECTED_BAR = "▌"
@@ -42,8 +42,17 @@ PREVIEW_MAX = 56
 
 
 class Row(NamedTuple):
+    """An item plus where the query landed in it.
+
+    ``positions`` is the title, kept separate because that is the one field
+    every row draws. ``field_positions`` maps a searchable field index (see
+    Item.fields) to its matched characters, so the summary and the meta
+    chunks can light up the same way wherever they are drawn.
+    """
+
     item: Item
     positions: Tuple[int, ...]
+    field_positions: Mapping[int, Tuple[int, ...]] = {}
 
 
 class Layout(NamedTuple):
@@ -79,6 +88,7 @@ class Segment(NamedTuple):
     role: str
     text: str
     bold: bool = False
+    underline: bool = False
 
 
 def _segments_to_text(theme: Theme, segments: Sequence[Segment], background: str = "") -> str:
@@ -87,10 +97,10 @@ def _segments_to_text(theme: Theme, segments: Sequence[Segment], background: str
         if not segment.text:
             continue
         color = theme.fg(segment.role) if segment.role else ""
-        if not color and not segment.bold:
+        if not color and not segment.bold and not segment.underline:
             out.append(segment.text)
             continue
-        prefix = ("\x1b[1m" if segment.bold else "") + color
+        prefix = (BOLD if segment.bold else "") + (UNDERLINE if segment.underline else "") + color
         out.append(prefix + segment.text + RESET + background)
     return "".join(out)
 
@@ -112,30 +122,73 @@ def _highlight(
     segments: List[Segment] = []
     run: List[str] = []
     run_marked = False
+
+    def flush() -> None:
+        if not run:
+            return
+        # Matched characters are usually one or two letters adrift in a
+        # sentence, so color alone reads as noise: underline them too and the
+        # subsequence is legible at a glance.
+        segments.append(
+            Segment(
+                "match" if run_marked else base_role,
+                "".join(run),
+                bold or run_marked,
+                run_marked,
+            )
+        )
+
     for index, char in enumerate(text):
         marked = index in marks
         if marked != run_marked and run:
-            segments.append(
-                Segment("match" if run_marked else base_role, "".join(run), bold or run_marked)
-            )
+            flush()
             run = []
         run_marked = marked
         run.append(char)
-    if run:
-        segments.append(
-            Segment("match" if run_marked else base_role, "".join(run), bold or run_marked)
-        )
+    flush()
     return segments
 
 
-def _context_label(item: Item) -> str:
+def _context_label(item: Item) -> Tuple[str, int]:
+    """The row's place: a workspace name, or the last segment of its path.
+
+    Returns the text and its offset inside item.subtitle, so a match in the
+    full path can be shifted onto the part actually drawn.
+    """
     if item.kind == KIND_SPACE:
-        return item.subtitle
+        return item.subtitle, 0
     if item.subtitle:
-        base = os.path.basename(item.subtitle.rstrip("/"))
+        stripped = item.subtitle.rstrip("/")
+        base = os.path.basename(stripped)
         if base:
-            return base
-    return ""
+            return base, len(stripped) - len(base)
+    return "", 0
+
+
+def _field_marks(row: Row, text: str, offset: int = 0) -> Tuple[int, ...]:
+    """Matched positions for a searchable field, moved onto what is drawn.
+
+    ``offset`` is where the drawn text starts inside the field it came from
+    (a path's last segment, a name behind its "@").
+    """
+    if not text or not row.field_positions:
+        return ()
+    try:
+        index = row.item.fields.index(text)
+    except ValueError:
+        return ()
+    marks = row.field_positions.get(index, ())
+    if not marks:
+        return ()
+    if not offset:
+        return marks
+    return tuple(mark + offset for mark in marks if mark + offset >= 0)
+
+
+def _chunk(theme: Theme, role: str, text: str, marks: Sequence[int]) -> List[Segment]:
+    if not marks:
+        return [Segment(role, text)]
+    return _highlight(theme, text, [m for m in marks if 0 <= m < len(text)], role, False)
 
 
 def render_row(
@@ -154,31 +207,39 @@ def render_row(
     glyph_role = item.status if item.status in ("blocked", "working", "done", "idle") else "unknown"
     glyph = Segment(glyph_role, theme.status_glyph(item.status, tick) + " ")
 
-    meta: List[Segment] = []
-    context = _context_label(item)
+    meta: List[List[Segment]] = []
+    context, context_start = _context_label(item)
     if (
         show_workspace
         and item.workspace_label
         and item.kind != KIND_SPACE
         and item.workspace_label.lower() != context.lower()
     ):
-        meta.append(Segment("muted", item.workspace_label))
+        meta.append(
+            _chunk(theme, "muted", item.workspace_label, _field_marks(row, item.workspace_label))
+        )
     if context:
-        meta.append(Segment("muted", context))
+        marks = _field_marks(row, item.subtitle, -context_start)
+        meta.append(_chunk(theme, "muted", context, marks))
     if item.agent:
-        label = "@" + item.agent_name if item.agent_name else item.agent
-        meta.append(Segment("muted", label))
+        if item.agent_name:
+            label = "@" + item.agent_name
+            marks = _field_marks(row, item.agent_name, 1)
+        else:
+            label = item.agent
+            marks = _field_marks(row, item.agent)
+        meta.append(_chunk(theme, "muted", label, marks))
     if item.focused:
-        meta.append(Segment("accent", "current"))
+        meta.append([Segment("accent", "current")])
     if age is not None:
         # Late in, so running time and the status word -- the two things that
         # tell you whether to look now -- survive the responsive trimming.
-        meta.append(Segment("muted", format_age(age)))
+        meta.append([Segment("muted", format_age(age))])
     word = STATUS_WORDS.get(item.status, "")
     if word:
-        meta.append(Segment(glyph_role, word))
+        meta.append(_chunk(theme, glyph_role, word, _field_marks(row, word)))
     if item.kind == KIND_SPACE:
-        meta.append(Segment("muted", "space"))
+        meta.append(_chunk(theme, "muted", "space", _field_marks(row, "space")))
 
     fixed = _plain_width([marker, glyph])
     available = max(0, width - fixed)
@@ -202,8 +263,11 @@ def render_row(
         # row has left, and steps aside entirely when that is not worth reading.
         room = title_width - used - display_width(DETAIL_SEP)
         if room >= MIN_DETAIL:
+            detail_text, detail_marks, _ = window_positions(
+                item.detail, room, row.field_positions.get(item.detail_field, ())
+            )
             title_segments.append(Segment("unknown", DETAIL_SEP))
-            title_segments.append(Segment("muted", truncate(item.detail, room)))
+            title_segments.extend(_highlight(theme, detail_text, detail_marks, "muted", False))
             used = _plain_width(title_segments)
     gap = max(1, available - used - meta_width) if meta_width else available - used
     segments = [marker, glyph] + title_segments
@@ -220,19 +284,19 @@ def render_row(
     return body + " " * trailing
 
 
-def _join_meta(meta: Sequence[Segment]) -> List[Segment]:
+def _join_meta(meta: Sequence[Sequence[Segment]]) -> List[Segment]:
     out: List[Segment] = []
-    for index, segment in enumerate(meta):
+    for index, chunk in enumerate(meta):
         if index:
             out.append(Segment("unknown", " · "))
-        out.append(segment)
+        out.extend(chunk)
     return out
 
 
-def _meta_width(meta: Sequence[Segment]) -> int:
+def _meta_width(meta: Sequence[Sequence[Segment]]) -> int:
     if not meta:
         return 0
-    return _plain_width(meta) + 3 * (len(meta) - 1)
+    return sum(_plain_width(chunk) for chunk in meta) + 3 * (len(meta) - 1)
 
 
 def render_input(
@@ -354,7 +418,7 @@ def render_empty_state(
     lines = []
     for text, role, bold in (
         (headline, "text", True),
-        (detail, "unknown", False),
+        (detail, "muted", False),
         (hint, "unknown", False),
     ):
         if not text:
@@ -389,7 +453,7 @@ def render_preview(
     out.append(_segments_to_text(theme, header))
     subtitle = item.subtitle or item.workspace_label
     out.append(
-        _segments_to_text(theme, [Segment("unknown", truncate_middle(subtitle, width))])
+        _segments_to_text(theme, [Segment("muted", truncate_middle(subtitle, width))])
         if subtitle
         else ""
     )

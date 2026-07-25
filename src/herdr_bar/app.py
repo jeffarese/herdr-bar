@@ -39,16 +39,18 @@ PLACEHOLDER_SHORT = "jump to a tab or agent…"
 
 def score_item(
     terms: Sequence[str], fields: Sequence[str]
-) -> Optional[Tuple[int, Tuple[int, ...]]]:
+) -> Optional[Tuple[int, Dict[int, Tuple[int, ...]]]]:
     """Score one row: every term must match one field, best field wins.
 
-    Only title matches (field 0) produce highlight positions, so the
-    highlighting always lines up with the text actually on screen.
+    Positions come back keyed by the field that won the term, so a caller can
+    light up whichever of those fields it actually draws -- and terms that were
+    answered by a field nobody can see simply have nowhere to land.
     """
     total = 0
-    positions: List[int] = []
+    found_positions: Dict[int, List[int]] = {}
     for term in terms:
         best: Optional[int] = None
+        best_index = -1
         best_positions: Tuple[int, ...] = ()
         for index, field in enumerate(fields):
             found = match(term, field)
@@ -57,12 +59,14 @@ def score_item(
             value = found.score + (TITLE_BONUS if index == 0 else 0)
             if best is None or value > best:
                 best = value
-                best_positions = found.positions if index == 0 else ()
+                best_index = index
+                best_positions = found.positions
         if best is None:
             return None
         total += best
-        positions.extend(best_positions)
-    return total, tuple(sorted(set(positions)))
+        if best_positions:
+            found_positions.setdefault(best_index, []).extend(best_positions)
+    return total, {index: tuple(sorted(set(marks))) for index, marks in found_positions.items()}
 
 
 class Bar(object):
@@ -162,7 +166,7 @@ class Bar(object):
             found = score_item(terms, item.fields)
             if found is None:
                 continue
-            score, positions = found
+            score, by_field = found
             rank = self.recents.rank(item.key, item.title)
             scored.append(
                 (
@@ -170,7 +174,7 @@ class Bar(object):
                     rank if rank is not None else 999,
                     item.status_rank,
                     len(item.title),
-                    Row(item, positions),
+                    Row(item, by_field.get(0, ()), by_field),
                 )
             )
         scored.sort(key=lambda entry: entry[:4])

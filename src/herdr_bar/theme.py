@@ -12,6 +12,7 @@ from typing import Dict, Optional
 
 RESET = "\x1b[0m"
 BOLD = "\x1b[1m"
+UNDERLINE = "\x1b[4m"
 
 _NAMED = {
     "black": 0,
@@ -34,10 +35,14 @@ _NAMED = {
     "bright_white": 15,
 }
 
+# Three tiers of foreground, so a row reads in order: the title (text), the
+# things you scan for once the title has landed (muted), and the punctuation
+# that only exists to separate them (dim). "unknown" is an alias of dim kept
+# for the status role and for configs written against the older name.
 DEFAULTS = {
     "accent": "bright_blue",
     "text": "default",
-    "muted": "bright_black",
+    "muted": "244",
     "blocked": "bright_red",
     "working": "bright_yellow",
     "done": "bright_cyan",
@@ -86,8 +91,12 @@ class Theme(object):
         self,
         overrides: Optional[Dict[str, str]] = None,
         selection_background: Optional[str] = None,
+        appearance: Optional[str] = None,
     ) -> None:
         merged = dict(DEFAULTS)
+        muted = default_muted(appearance)
+        if muted:
+            merged["muted"] = muted
         merged.update({k: v for k, v in (overrides or {}).items() if isinstance(v, str)})
         self._fg: Dict[str, str] = {}
         for role, spec in merged.items():
@@ -112,6 +121,19 @@ class Theme(object):
         if status == "working":
             return SPINNER_FRAMES[tick % len(SPINNER_FRAMES)]
         return STATUS_GLYPHS.get(status, STATUS_GLYPHS["unknown"])
+
+
+def default_muted(appearance: Optional[str]) -> Optional[str]:
+    """Pick the secondary foreground: legible, still clearly below the title.
+
+    The neutral 244 survives either background, so an unknown appearance keeps
+    the default rather than guessing.
+    """
+    if appearance == "dark":
+        return "249"
+    if appearance == "light":
+        return "240"
+    return None
 
 
 def default_selection_background(appearance: Optional[str]) -> Optional[str]:

@@ -10,6 +10,16 @@
 - Agent rows lead with the tab's own name and trail it with the agent's current
   summary, dropping the summary when a narrow row has no space for it or when it
   only repeats the name.
+- Matches are highlighted wherever the row draws the text they landed in — the
+  tab name, the agent's summary, the directory, the agent name, the workspace —
+  instead of only in the tab name, which left a row matched entirely on its
+  summary with nothing lit up at all.
+- Matched characters are underlined as well as colored and bold, so the fuzzy
+  subsequence is legible when it lands one letter at a time.
+- Secondary text (summaries, agent names, running times) is a readable gray
+  chosen from the terminal's background rather than the terminal's dim color,
+  which left it near-invisible on a selected row. Separators and rules keep the
+  dim color, so the row still reads in tiers. Override with `colors.muted`.
 - Rows show how long their process has been running — the agent session, or
   whatever a plain tab is running. Read once per pane from `pane.process_info`
   and `ps`, then ticked locally.

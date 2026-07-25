@@ -1,8 +1,9 @@
 import re
 import unittest
 
-from herdr_bar.app import Bar
+from herdr_bar.app import Bar, score_item
 from herdr_bar.config import Config
+from herdr_bar.fuzzy import split_query
 from herdr_bar.items import build_items
 from herdr_bar.mru import Recents
 from herdr_bar.render import (
@@ -222,6 +223,36 @@ class RowTest(unittest.TestCase):
         row = render_row(self.theme, Row(item, (0, 1, 2)), 60, False, 0, True)
         self.assertEqual(visible_width(row), 60)
 
+    def test_a_summary_match_is_highlighted_where_the_summary_is_drawn(self):
+        item = next(i for i in self.items if i.detail)
+        terms = split_query(item.detail.split()[0])
+        found = score_item(terms, item.fields)
+        self.assertIsNotNone(found)
+        row = Row(item, found[1].get(0, ()), found[1])
+        self.assertIn("\x1b[4m", render_row(self.theme, row, 120, False, 0, True))
+
+    def test_a_meta_match_is_highlighted_and_the_row_keeps_its_width(self):
+        item = next(i for i in self.items if i.agent_name)
+        found = score_item(split_query(item.agent_name), item.fields)
+        self.assertIsNotNone(found)
+        row = Row(item, found[1].get(0, ()), found[1])
+        rendered = render_row(self.theme, row, 120, False, 0, True)
+        self.assertIn("\x1b[4m" + self.theme.fg("match") + item.agent_name, rendered)
+        for width in range(20, 130, 3):
+            self.assertEqual(
+                visible_width(render_row(self.theme, row, width, False, 0, True, 90.0)),
+                width,
+                "width %d" % width,
+            )
+
+    def test_matched_characters_are_underlined_and_the_rest_is_not(self):
+        item = self.items[0]
+        item.title = "week loading"
+        row = render_row(self.theme, Row(item, (0, 1, 2, 3)), 60, False, 0, True)
+        self.assertIn("\x1b[4m" + self.theme.fg("match") + "week", row)
+        self.assertNotIn("\x1b[4m" + self.theme.fg("match") + " loading", row)
+        self.assertEqual(visible_width(row), 60)
+
     def test_the_summary_follows_the_tab_name_when_there_is_room(self):
         item = next(i for i in self.items if i.detail)
         plain = strip_ansi(render_row(self.theme, Row(item, ()), 120, False, 0, True))
@@ -252,6 +283,17 @@ class RowTest(unittest.TestCase):
         first = render_row(self.theme, Row(working, ()), 60, False, 0, True)
         second = render_row(self.theme, Row(working, ()), 60, False, 1, True)
         self.assertNotEqual(first, second)
+
+
+class ThemeTest(unittest.TestCase):
+    def test_secondary_text_is_brighter_than_the_separators(self):
+        for appearance in (None, "dark", "light"):
+            theme = Theme(appearance=appearance)
+            self.assertNotEqual(theme.fg("muted"), theme.fg("unknown"), repr(appearance))
+
+    def test_a_configured_muted_wins_over_the_appearance(self):
+        theme = Theme({"muted": "#ff00ff"}, appearance="dark")
+        self.assertEqual(theme.fg("muted"), "\x1b[38;2;255;0;255m")
 
 
 class WidgetTest(unittest.TestCase):

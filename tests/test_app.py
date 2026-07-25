@@ -81,9 +81,13 @@ class ScoreItemTest(unittest.TestCase):
     def test_a_term_matching_nothing_rejects_the_row(self):
         self.assertIsNone(score_item(["nope"], ("retry queue", "erestor")))
 
-    def test_only_title_matches_produce_highlights(self):
+    def test_positions_are_keyed_by_the_field_that_won_the_term(self):
         _, positions = score_item(["codex"], ("retry queue backoff", "codex"))
-        self.assertEqual(positions, ())
+        self.assertEqual(positions, {1: (0, 1, 2, 3, 4)})
+
+    def test_each_term_highlights_its_own_field(self):
+        _, positions = score_item(["retry", "codex"], ("retry queue", "codex"))
+        self.assertEqual(sorted(positions), [0, 1])
 
     def test_title_matches_outrank_field_matches(self):
         title_hit, _ = score_item(["retry"], ("retry queue", "other"))

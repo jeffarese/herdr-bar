@@ -124,9 +124,14 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     recents = Recents(state_path())
     selection_background = config.selection_background
+    # One appearance query, and only when something still depends on it: it
+    # costs a round trip to the terminal on every open.
+    appearance = None
+    if selection_background == "auto" or "muted" not in (config.colors or {}):
+        appearance = detect_appearance()
     if selection_background == "auto":
-        selection_background = default_selection_background(detect_appearance())
-    theme = Theme(config.colors, selection_background)
+        selection_background = default_selection_background(appearance)
+    theme = Theme(config.colors, selection_background, appearance)
 
     bar = Bar(client, config, recents, theme)
     try:
