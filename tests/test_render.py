@@ -274,6 +274,42 @@ class RowTest(unittest.TestCase):
             self.assertEqual(visible_width(row), width)
         self.assertIn("2h04m", render_row(self.theme, Row(item, ()), 90, False, 0, True, 7440))
 
+    def test_context_is_not_repeated_when_the_summary_already_shows_it(self):
+        item = next(item for item in self.items if item.detail)
+        item.detail = "pacebeats"
+        item.subtitle = "/Users/dev/workspace/pacebeats"
+        item.workspace_label = "pacebeats"
+        plain = strip_ansi(render_row(self.theme, Row(item, ()), 120, False, 0, True))
+        self.assertEqual(plain.count("pacebeats"), 1)
+
+    def test_context_is_not_repeated_when_it_is_the_title(self):
+        item = next(item for item in self.items if item.agent == "codex")
+        item.title = "erestor"
+        item.detail = ""
+        item.subtitle = "/Users/dev/workspace/erestor"
+        item.workspace_label = "erestor"
+        plain = strip_ansi(render_row(self.theme, Row(item, ()), 120, False, 0, True))
+        self.assertEqual(plain.count("erestor"), 1)
+
+    def test_agent_labels_have_distinct_colors(self):
+        expected = {
+            "claude": "agent_claude",
+            "codex": "agent_codex",
+            "gemini": "agent_gemini",
+            "kimi": "agent_kimi",
+        }
+        item = next(item for item in self.items if item.agent == "claude" and not item.agent_name)
+        for agent, role in expected.items():
+            item.agent = agent
+            rendered = render_row(self.theme, Row(item, ()), 120, False, 0, True)
+            self.assertIn(self.theme.fg(role) + agent, rendered)
+        self.assertEqual(len({self.theme.fg(role) for role in expected.values()}), len(expected))
+
+    def test_named_agents_use_their_underlying_agent_color(self):
+        item = next(item for item in self.items if item.agent_name)
+        rendered = render_row(self.theme, Row(item, ()), 120, False, 0, True)
+        self.assertIn(self.theme.fg("agent_claude") + "@battery", rendered)
+
     def test_a_pane_with_no_reading_shows_no_time(self):
         item = self.items[0]
         plain = strip_ansi(render_row(self.theme, Row(item, ()), 90, False, 0, True))
@@ -303,6 +339,21 @@ class WidgetTest(unittest.TestCase):
         for width in (20, 40, 80, 120):
             row = render_input(theme, "hello", 5, width, "placeholder text", "@ agents")
             self.assertLessEqual(visible_width(row), width)
+
+    def test_rename_prompt_and_hint_fit(self):
+        theme = Theme()
+        for width in (20, 40, 80, 120):
+            row = render_input(
+                theme,
+                "new name",
+                8,
+                width,
+                "old name",
+                "⏎ save · esc keep",
+                "rename ❯",
+            )
+            self.assertLessEqual(visible_width(row), width)
+            self.assertIn("rename", strip_ansi(row))
 
     def test_footer_drops_hints_before_overflowing(self):
         theme = Theme()

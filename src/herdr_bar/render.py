@@ -195,6 +195,36 @@ def _chunk(theme: Theme, role: str, text: str, marks: Sequence[int]) -> List[Seg
     return _highlight(theme, text, [m for m in marks if 0 <= m < len(text)], role, False)
 
 
+AGENT_ROLES = {
+    "claude": "agent_claude",
+    "codex": "agent_codex",
+    "kimi": "agent_kimi",
+    "gemini": "agent_gemini",
+    "cursor": "agent_cursor",
+    "cursor-agent": "agent_cursor",
+    "opencode": "agent_opencode",
+    "open-code": "agent_opencode",
+}
+
+
+def _agent_role(agent: Optional[str]) -> str:
+    if not agent:
+        return "muted"
+    kind = agent.strip().lower().split(":", 1)[0]
+    if kind.endswith(" code"):
+        kind = kind[:-5]
+    return AGENT_ROLES.get(kind, "muted")
+
+
+def _duplicates_primary_text(item: Item, label: str) -> bool:
+    """Whether metadata would repeat the title or its visible summary."""
+    normalized = label.strip().casefold()
+    return bool(normalized) and normalized in {
+        item.title.strip().casefold(),
+        item.detail.strip().casefold(),
+    }
+
+
 def render_row(
     theme: Theme,
     row: Row,
@@ -218,11 +248,12 @@ def render_row(
         and item.workspace_label
         and item.kind != KIND_SPACE
         and item.workspace_label.lower() != context.lower()
+        and not _duplicates_primary_text(item, item.workspace_label)
     ):
         meta.append(
             _chunk(theme, "muted", item.workspace_label, _field_marks(row, item.workspace_label))
         )
-    if context:
+    if context and not _duplicates_primary_text(item, context):
         marks = _field_marks(row, item.subtitle, -context_start)
         meta.append(_chunk(theme, "muted", context, marks))
     if item.agent:
@@ -232,7 +263,7 @@ def render_row(
         else:
             label = item.agent
             marks = _field_marks(row, item.agent)
-        meta.append(_chunk(theme, "muted", label, marks))
+        meta.append(_chunk(theme, _agent_role(item.agent), label, marks))
     if item.focused:
         meta.append([Segment("accent", "current")])
     if age is not None:
@@ -310,15 +341,17 @@ def render_input(
     width: int,
     placeholder: str,
     chip: str,
+    prompt_text: str = PROMPT,
 ) -> str:
     chip_text = ""
     chip_width = 0
-    if chip and width > len(chip) + 24:
+    prompt_width = display_width(prompt_text) + 1
+    if chip and width > display_width(chip) + prompt_width + 24:
         chip_text = chip
         chip_width = display_width(chip) + 2
 
-    field_width = max(4, width - 2 - chip_width)
-    prompt = _segments_to_text(theme, [Segment("accent", PROMPT + " ", True)])
+    field_width = max(1, width - prompt_width - chip_width)
+    prompt = _segments_to_text(theme, [Segment("accent", prompt_text + " ", True)])
 
     if query:
         visible = truncate(query, field_width)
@@ -334,13 +367,13 @@ def render_input(
             + "\x1b[27m"
             + _segments_to_text(theme, [Segment("text", after)])
         )
-        used = 2 + display_width(before) + display_width(under) + display_width(after)
+        used = prompt_width + display_width(before) + display_width(under) + display_width(after)
     else:
         hint = truncate(placeholder, max(0, field_width - 2))
         rendered = (
             prompt + "\x1b[7m \x1b[27m" + _segments_to_text(theme, [Segment("unknown", hint)])
         )
-        used = 3 + display_width(hint)
+        used = prompt_width + 1 + display_width(hint)
 
     if chip_text:
         padding = max(1, width - used - display_width(chip_text))

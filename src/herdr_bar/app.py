@@ -110,6 +110,9 @@ class Bar(object):
         self.status: Optional[str] = None
         self.status_until = 0.0
         self.pending_close: Optional[Tuple[str, str, int]] = None
+        self.pending_rename: Optional[Tuple[str, str]] = None
+        self.rename_text = ""
+        self.rename_cursor = 0
         self._preview_cache: Dict[str, Tuple[float, List[str]]] = {}
         self._preview_pending: Optional[Tuple[str, float]] = None
         self._ages: Dict[str, Optional[Tuple[float, float]]] = {}
@@ -379,13 +382,140 @@ class Bar(object):
             self._dirty = True
             return None
         if name == "ctrl+r":
-            self.refresh(force=False)
-            self.flash("refreshed")
+            self.request_rename()
             return None
         return None
 
     def _page(self) -> int:
         return max(1, self._list_height - 1)
+
+    # -- renaming -----------------------------------------------------------
+
+    def request_rename(self) -> None:
+        """Open an inline editor for the tab behind the selected row."""
+        if not self.rows:
+            return
+        item = self.selected_item()
+        if item.kind == KIND_SPACE or not item.tab_id:
+            self.flash("only tabs and agents can be renamed")
+            return
+        self.pending_rename = (item.tab_id, item.title)
+        self.rename_text = ""
+        self.rename_cursor = 0
+        self._dirty = True
+
+    def cancel_rename(self) -> None:
+        self.pending_rename = None
+        self.rename_text = ""
+        self.rename_cursor = 0
+        self._dirty = True
+
+    def _set_rename_text(self, text: str, cursor: Optional[int] = None) -> None:
+        self.rename_text = text
+        self.rename_cursor = (
+            len(text) if cursor is None else max(0, min(cursor, len(text)))
+        )
+        self._dirty = True
+
+    def _insert_rename(self, text: str, pasted: bool = False) -> None:
+        text = sanitize(text, " ")
+        if pasted:
+            text = " ".join(text.split())
+        if not text:
+            return
+        self._set_rename_text(
+            self.rename_text[: self.rename_cursor]
+            + text
+            + self.rename_text[self.rename_cursor :],
+            self.rename_cursor + len(text),
+        )
+
+    def _rename_delete_word(self) -> None:
+        if self.rename_cursor <= 0:
+            return
+        head = self.rename_text[: self.rename_cursor].rstrip()
+        space = head.rfind(" ")
+        head = head[: space + 1] if space >= 0 else ""
+        self._set_rename_text(head + self.rename_text[self.rename_cursor :], len(head))
+
+    def confirm_rename(self) -> None:
+        if self.pending_rename is None:
+            return
+        tab_id, old_title = self.pending_rename
+        label = self.rename_text.strip()
+        if not label or label == old_title:
+            self.cancel_rename()
+            self.flash("name unchanged")
+            return
+        try:
+            self.client.rename_tab(tab_id, label)
+        except HerdrError as error:
+            self.flash(str(error))
+            return
+        self.cancel_rename()
+        self.refresh(force=False)
+        self.flash("renamed to %s" % label)
+
+    def handle_rename(self, event: Event) -> Optional[str]:
+        """The rename editor owns input until it is saved or cancelled."""
+        if event.kind == TEXT:
+            self._insert_rename(event.value)
+            return None
+        if event.kind == PASTE:
+            self._insert_rename(event.value, pasted=True)
+            return None
+        if event.kind != KEY:
+            return None
+
+        name = event.value
+        if name in ("esc", "ctrl+g"):
+            self.cancel_rename()
+            return None
+        if name in ("ctrl+c", "ctrl+q"):
+            self.cancel_rename()
+            return "cancel"
+        if name == "enter":
+            self.confirm_rename()
+            return None
+        if name in ("home", "ctrl+home", "ctrl+a"):
+            self.rename_cursor = 0
+            self._dirty = True
+            return None
+        if name in ("end", "ctrl+end", "ctrl+e"):
+            self.rename_cursor = len(self.rename_text)
+            self._dirty = True
+            return None
+        if name == "left":
+            self.rename_cursor = max(0, self.rename_cursor - 1)
+            self._dirty = True
+            return None
+        if name == "right":
+            self.rename_cursor = min(len(self.rename_text), self.rename_cursor + 1)
+            self._dirty = True
+            return None
+        if name in ("backspace", "ctrl+h"):
+            if self.rename_cursor > 0:
+                self._set_rename_text(
+                    self.rename_text[: self.rename_cursor - 1]
+                    + self.rename_text[self.rename_cursor :],
+                    self.rename_cursor - 1,
+                )
+            return None
+        if name in ("delete", "ctrl+d"):
+            if self.rename_cursor < len(self.rename_text):
+                self._set_rename_text(
+                    self.rename_text[: self.rename_cursor]
+                    + self.rename_text[self.rename_cursor + 1 :],
+                    self.rename_cursor,
+                )
+            return None
+        if name == "ctrl+u":
+            self._set_rename_text("")
+            return None
+        if name == "ctrl+w":
+            self._rename_delete_word()
+            return None
+        return None
 
     # -- closing ------------------------------------------------------------
 
@@ -549,12 +679,27 @@ class Bar(object):
         rows: List[str] = []
         chip = SCOPE_CHIPS.get(self.scope, "")
         placeholder = PLACEHOLDER if layout.inner_width >= 62 else PLACEHOLDER_SHORT
-        rows.append(
-            " "
-            + render.render_input(
-                self.theme, self.query, self.cursor, layout.inner_width, placeholder, chip
+        if self.pending_rename is not None:
+            _, old_title = self.pending_rename
+            rows.append(
+                " "
+                + render.render_input(
+                    self.theme,
+                    self.rename_text,
+                    self.rename_cursor,
+                    layout.inner_width,
+                    "new name for “%s”" % old_title,
+                    "⏎ save · esc keep",
+                    "rename ❯",
+                )
             )
-        )
+        else:
+            rows.append(
+                " "
+                + render.render_input(
+                    self.theme, self.query, self.cursor, layout.inner_width, placeholder, chip
+                )
+            )
         if layout.rules:
             rows.append(" " + render.render_rule(self.theme, layout.inner_width))
 
@@ -659,6 +804,13 @@ class Bar(object):
         if self.status and time.monotonic() < self.status_until:
             message = self.theme.paint("accent", self.status)
             return message
+        if self.pending_rename is not None:
+            return render.render_footer(
+                self.theme,
+                width,
+                [("⏎", "save"), ("esc", "keep"), ("^u", "clear")],
+                "renaming",
+            )
         hints = [
             ("↑↓", "move"),
             ("⏎", "jump"),
@@ -666,6 +818,7 @@ class Bar(object):
             # Backspace only reaches the close once there is nothing left for
             # it to erase, so the footer names whichever key works right now.
             ("⌫" if self.backspace_closes() else "⌦", "close"),
+            ("^r", "rename"),
             ("^o", "preview"),
             ("esc", "quit"),
         ]
@@ -726,6 +879,11 @@ class Bar(object):
         for event in events:
             if self.pending_close is not None:
                 outcome = self.handle_confirm(event) or outcome
+                if outcome == "cancel":
+                    return outcome
+                continue
+            if self.pending_rename is not None:
+                outcome = self.handle_rename(event) or outcome
                 if outcome == "cancel":
                     return outcome
                 continue

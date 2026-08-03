@@ -111,6 +111,7 @@ KEYCAPS = {
     "esc": "esc",
     "ctrl+u": "^U",
     "ctrl+o": "^O",
+    "ctrl+r": "^R",
     "ctrl+w": "^W",
     "pgdn": "⇟",
     "pgup": "⇞",
@@ -177,6 +178,13 @@ class DemoClient(object):
         self.state["agents"] = [
             agent for agent in self.state["agents"] if agent.get("tab_id") != tab_id
         ]
+
+    def rename_tab(self, tab_id, label):
+        """Rename one tab in the synthetic session, the way herdr would."""
+        for tab in self.state["tabs"]:
+            if tab.get("tab_id") == tab_id:
+                tab["label"] = label
+                return
 
     def set_status(self, pane_id: str, status: str) -> None:
         """Move one agent to another state, the way a live session would."""
@@ -274,6 +282,8 @@ class Recorder(object):
         if self.bar.pending_close is not None:
             # An armed close owns the keyboard, exactly as the run loop has it.
             self.bar.handle_confirm(Event(KEY, name))
+        elif self.bar.pending_rename is not None:
+            self.bar.handle_rename(Event(KEY, name))
         else:
             result = self.bar.handle_key(name)
             if result == "confirm" and self.bar.rows:
@@ -291,6 +301,8 @@ class Recorder(object):
         for char in text:
             if self.bar.pending_close is not None:
                 self.bar.handle_confirm(Event(TEXT, char))
+            elif self.bar.pending_rename is not None:
+                self.bar.handle_rename(Event(TEXT, char))
             else:
                 self.bar.insert(char)
             self.chip = char
@@ -350,6 +362,9 @@ def perform(recorder: Recorder) -> None:
     recorder.say("the tab you named, what its agent is doing, how long it has run")
     recorder.hold(1.9)
 
+    recorder.say("Claude, Codex and Gemini each carry their own color")
+    recorder.hold(1.8)
+
     recorder.say("needs-you first, then done · where you just were floats up")
     recorder.hold(1.5)
 
@@ -390,6 +405,13 @@ def perform(recorder: Recorder) -> None:
     recorder.key("ctrl+u", 0.25)
     recorder.repeat("tab", 3, 1.15)
     recorder.key("tab", 0.8)
+
+    recorder.say("^r renames the tab behind any row · enter saves, esc keeps")
+    recorder.key("ctrl+r", 0.7)
+    recorder.type("retry budget", 0.13)
+    recorder.hold(1.2)
+    recorder.key("enter", 0.8)
+    recorder.hold(1.2)
 
     recorder.say("^o folds the preview away when you want the room")
     recorder.key("ctrl+o", 1.7)

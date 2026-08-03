@@ -112,6 +112,17 @@ class SocketTransportTest(unittest.TestCase):
             ],
         )
 
+    def test_tab_rename_sends_the_documented_params(self):
+        server = SocketServer(self.path, ok)
+        self.addCleanup(server.close)
+        client = HerdrClient(socket_path=self.path, bin_path="/nonexistent")
+        client.rename_tab("w1:t1", "new panel name")
+        self.assertEqual(server.requests[0]["method"], "tab.rename")
+        self.assertEqual(
+            server.requests[0]["params"],
+            {"tab_id": "w1:t1", "label": "new panel name"},
+        )
+
     def test_server_errors_become_herdr_errors(self):
         def failing(request):
             return {"id": request["id"], "error": {"code": "not_found", "message": "no such tab"}}

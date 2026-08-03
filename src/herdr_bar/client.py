@@ -186,6 +186,13 @@ class HerdrClient:
     def close_tab(self, tab_id: str) -> None:
         self.call("tab.close", {"tab_id": tab_id}, ["tab", "close", tab_id])
 
+    def rename_tab(self, tab_id: str, label: str) -> None:
+        self.call(
+            "tab.rename",
+            {"tab_id": tab_id, "label": label},
+            ["tab", "rename", tab_id, label],
+        )
+
     def focus_workspace(self, workspace_id: str) -> None:
         self.call(
             "workspace.focus",

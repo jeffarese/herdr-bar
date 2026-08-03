@@ -14,6 +14,8 @@ takes you there. Like the Slack quick switcher, for the terminal.
 - **live status, herdr's own language** — `◉` needs you, spinner working,
   `●` done, `✓` idle. Colors and glyphs mirror the herdr sidebar, and the list
   keeps updating while it is open.
+- **agents at a glance** — Claude, Codex, Kimi, Gemini, Cursor and OpenCode
+  labels each have a distinct color in mixed-agent sessions.
 - **opens on what matters** — blocked and finished agents float to the top,
   recently visited rows above them, and the tab you are in is never first, so
   open-then-Enter works like alt-tab.
@@ -97,7 +99,7 @@ Whichever you pick, Cmd+K is likely already taken by the terminal (usually
 | `delete` (fn+`⌫` on a Mac laptop) | close the selected row's tab, whatever is typed |
 | `ctrl+u` / `ctrl+w` / `ctrl+d` | clear the query / delete a word / forward delete |
 | `ctrl+o` | toggle the preview |
-| `ctrl+r` | refresh now |
+| `ctrl+r` | rename the selected row's tab; Enter saves, Esc keeps the old name |
 | `pgup` / `pgdn` | page |
 | wheel / click | move / select, click again to jump |
 
@@ -108,7 +110,9 @@ and its pane; selecting a workspace focuses the workspace.
 **What a row says.** The tab's own name comes first — that is what you named
 the work and what you remember it by — and an agent's current summary follows it
 in dimmer text. A narrow row keeps the name and drops the summary; a tab with no
-name of its own lets the summary stand in for it.
+name of its own lets the summary stand in for it. Folder and workspace metadata
+is omitted when the same name is already present in the title or summary, and
+agent labels use distinct colors so mixed-agent sessions scan quickly.
 
 **Closing a tab.** `backspace` — the key macOS labels *delete* — erases the
 query first, then clears the filter, and once there is nothing left to unwind
@@ -164,13 +168,14 @@ Optional. Write `config.json` in the plugin config directory
 | `refresh_ms` | `900` | how often the open bar re-reads the session |
 | `workspaces` | `"auto"` | `true`, `false`, or `"auto"` (on with more than one workspace) |
 | `selection_background` | `"auto"` | `"auto"` asks the terminal for its background color, or set `"none"`, a hex value, or a 0-255 ANSI index |
-| `colors` | `{}` | role → `#rrggbb`, an ANSI name (`bright_blue`), or 0-255. Roles: `accent`, `match`, `text`, `muted`, `blocked`, `working`, `done`, `idle`, `unknown` |
+| `colors` | `{}` | role → `#rrggbb`, an ANSI name (`bright_blue`), or 0-255. Roles: `accent`, `match`, `text`, `muted`, `blocked`, `working`, `done`, `idle`, `unknown`, plus `agent_claude`, `agent_codex`, `agent_kimi`, `agent_gemini`, `agent_cursor`, `agent_opencode` |
 
 Colors default to plain ANSI, so the bar follows whatever theme your terminal
 already uses. The exception is `muted` — the second tier of text, used for
-summaries, agent names and running times — which is a gray picked from the
+summaries and running times — which is a gray picked from the
 terminal's own background (lighter on a dark theme, darker on a light one) so it
-stays readable; `unknown` is the dimmer tier below it, for separators and rules.
+stays readable; agent labels use their agent role, and `unknown` is the dimmer
+tier below it for separators and rules.
 
 Popup size lives in herdr, not here. Override the manifest's `74%` × `62%` per
 invocation with `herdr plugin pane open --plugin herdr-bar --entrypoint bar

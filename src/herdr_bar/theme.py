@@ -49,6 +49,14 @@ DEFAULTS = {
     "idle": "bright_green",
     "unknown": "bright_black",
     "match": "bright_blue",
+    # Agent labels stay textual in the popup, but distinct colors make mixed
+    # teams scannable without depending on terminal image support.
+    "agent_claude": "#D97757",
+    "agent_codex": "#10A37F",
+    "agent_kimi": "#9B8AFB",
+    "agent_gemini": "#4285F4",
+    "agent_cursor": "#A78BFA",
+    "agent_opencode": "#38BDF8",
 }
 
 SPINNER_FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")

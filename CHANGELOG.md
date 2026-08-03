@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.2.0
+
+- `ctrl+r` opens an inline editor for the selected row's tab name. `enter`
+  saves through `tab.rename`, `esc` keeps the old name, and failures leave the
+  editor open for correction.
+- Claude, Codex, Kimi, Gemini, Cursor, and OpenCode labels use distinct,
+  configurable colors. Folder or workspace metadata is omitted when the same
+  name is already visible in the title or summary.
+- The deterministic README demo now shows both the agent colors and the
+  `ctrl+r` rename interaction.
 - `delete`, and `backspace` once it has nothing left to erase, close the
   selected row's tab after a confirmation in the footer; `enter` or `y` goes
   through with it, `esc` or any other key calls it off. A tab running more than

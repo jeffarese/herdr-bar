@@ -17,6 +17,7 @@ class FakeClient(object):
         self.calls = []
         self.fail = False
         self.close_error = None
+        self.rename_error = None
         self.ages = dict(fixtures.PANE_AGES)
 
     def snapshot(self):
@@ -42,6 +43,14 @@ class FakeClient(object):
                 record for record in snapshot[key] if record.get("tab_id") != tab_id
             ]
         self._snapshot = snapshot
+
+    def rename_tab(self, tab_id, label):
+        self.calls.append(("rename", tab_id, label))
+        if self.rename_error:
+            raise HerdrError(self.rename_error)
+        for tab in self._snapshot["tabs"]:
+            if tab.get("tab_id") == tab_id:
+                tab["label"] = label
 
     def focus_workspace(self, workspace_id):
         self.calls.append(("workspace", workspace_id))
@@ -456,6 +465,81 @@ class CloseTest(unittest.TestCase):
         press(instance, b"\x1b[D\x1b[D")  # left, left
         press(instance, b"\x04")
         self.assertEqual(instance.query, "wek")
+
+
+class RenameTest(unittest.TestCase):
+    def renames(self, client):
+        return [call for call in client.calls if call[0] == "rename"]
+
+    def test_ctrl_r_opens_an_editor_for_the_selected_tabs_name(self):
+        instance = bar()
+        selected = instance.selected_item()
+        press(instance, b"\x12")
+        self.assertEqual(instance.pending_rename, (selected.tab_id, selected.title))
+        self.assertEqual(instance.rename_text, "")
+
+    def test_enter_renames_the_tab_behind_an_agent_row(self):
+        client = FakeClient()
+        instance = bar(client=client)
+        tab_id = instance.selected_item().tab_id
+        press(instance, b"\x12", b"new panel name", b"\r")
+        self.assertEqual(self.renames(client), [("rename", tab_id, "new panel name")])
+        self.assertIsNone(instance.pending_rename)
+        self.assertIn("new panel name", titles(instance))
+
+    def test_escape_keeps_the_old_name_and_the_bar_open(self):
+        client = FakeClient()
+        instance = bar(client=client)
+        press(instance, b"\x12", b"replacement")
+        self.assertIsNone(escape(instance))
+        self.assertIsNone(instance.pending_rename)
+        self.assertEqual(self.renames(client), [])
+
+    def test_empty_enter_keeps_the_old_name(self):
+        client = FakeClient()
+        instance = bar(client=client)
+        press(instance, b"\x12", b"\r")
+        self.assertIsNone(instance.pending_rename)
+        self.assertEqual(self.renames(client), [])
+        self.assertIn("unchanged", instance.status)
+
+    def test_rename_editor_supports_cursor_edits_and_paste(self):
+        client = FakeClient()
+        instance = bar(client=client)
+        press(
+            instance,
+            b"\x12",
+            b"\x1b[200~panel nme\x1b[201~",
+            b"\x1b[D\x1b[D",
+            b"a",
+            b"\r",
+        )
+        self.assertEqual(self.renames(client)[0][2], "panel name")
+
+    def test_rename_failure_stays_in_the_editor(self):
+        client = FakeClient()
+        client.rename_error = "name rejected"
+        instance = bar(client=client)
+        press(instance, b"\x12", b"bad name", b"\r")
+        self.assertIsNotNone(instance.pending_rename)
+        self.assertEqual(instance.rename_text, "bad name")
+        self.assertIn("rejected", instance.status)
+
+    def test_workspace_rows_cannot_be_renamed(self):
+        client = FakeClient()
+        instance = bar(client=client)
+        instance.selected = next(
+            index for index, row in enumerate(instance.rows) if row.item.kind == KIND_SPACE
+        )
+        press(instance, b"\x12")
+        self.assertIsNone(instance.pending_rename)
+        self.assertIn("tabs and agents", instance.status)
+
+    def test_ctrl_c_during_rename_still_leaves_the_bar(self):
+        instance = bar()
+        press(instance, b"\x12")
+        self.assertEqual(press(instance, b"\x03"), "cancel")
+        self.assertIsNone(instance.pending_rename)
 
 
 class AgeTest(unittest.TestCase):
