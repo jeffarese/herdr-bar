@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.2.1
+
+- `"preview": false` now means the preview starts hidden rather than staying
+  hidden: `ctrl+o` brings it up for the rest of the run. `ctrl+o` also opens the
+  preview in a popup that `"auto"` considers too narrow, so one press always
+  flips what is on screen.
+
 ## 0.2.0
 
 - `ctrl+r` opens an inline editor for the selected row's tab name. `enter`
