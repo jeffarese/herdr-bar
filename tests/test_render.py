@@ -5,6 +5,7 @@ from herdr_bar.app import Bar, score_item
 from herdr_bar.config import Config
 from herdr_bar.fuzzy import split_query
 from herdr_bar.items import build_items
+from herdr_bar.keys import KeyDecoder
 from herdr_bar.mru import Recents
 from herdr_bar.render import (
     Row,
@@ -61,7 +62,16 @@ def frame_rows(frame, height):
     return rows
 
 
-def draw(width, height, query="", scope="all", config=None, confirm=False):
+def settle(bar, terminal):
+    bar.draw(terminal)
+    if bar._preview_pending:  # skip the debounce the draw just armed
+        bar._preview_pending = (bar._preview_pending[0], 0.0)
+    bar.pump_preview(bar._list_height)
+    while bar._age_queue:  # the loop would spread these over a few frames
+        bar.pump_ages()
+
+
+def draw(width, height, query="", scope="all", config=None, confirm=False, keys=b""):
     bar = Bar(
         FakeClient(),
         config or Config({"selection_background": "237"}),
@@ -74,12 +84,10 @@ def draw(width, height, query="", scope="all", config=None, confirm=False):
         bar.set_query(query)
     bar.rebuild()
     terminal = FakeTerminal(width, height)
-    bar.draw(terminal)
-    if bar._preview_pending:  # skip the debounce the draw just armed
-        bar._preview_pending = (bar._preview_pending[0], 0.0)
-    bar.pump_preview(bar._list_height)
-    while bar._age_queue:  # the loop would spread these over a few frames
-        bar.pump_ages()
+    settle(bar, terminal)
+    if keys:  # the real loop always paints a frame before it reads a key
+        bar._consume(KeyDecoder().feed(keys))
+        settle(bar, terminal)
     if confirm:
         bar.request_close()
     terminal.frames = []
@@ -169,6 +177,23 @@ class ContentTest(unittest.TestCase):
         _, rows = draw(140, 20)
         joined = "\n".join(rows)
         self.assertIn("Ready", joined)
+
+    def test_preview_false_hides_the_preview_but_ctrl_o_brings_it_back(self):
+        hidden = Config({"preview": False})
+        _, off = draw(140, 20, config=hidden)
+        self.assertNotIn("Ready", "\n".join(off))
+        _, on = draw(140, 20, config=hidden, keys=b"\x0f")
+        self.assertIn("Ready", "\n".join(on))
+
+    def test_ctrl_o_opens_the_preview_in_a_popup_auto_thinks_is_too_narrow(self):
+        _, off = draw(90, 20)
+        self.assertNotIn("Ready", "\n".join(off))
+        _, on = draw(90, 20, keys=b"\x0f")
+        self.assertIn("Ready", "\n".join(on))
+
+    def test_ctrl_o_hides_a_preview_that_is_showing(self):
+        _, rows = draw(140, 20, keys=b"\x0f")
+        self.assertNotIn("Ready", "\n".join(rows))
 
     def test_empty_state_when_nothing_matches(self):
         _, rows = draw(110, 20, "zzzqqq")

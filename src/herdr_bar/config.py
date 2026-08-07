@@ -13,7 +13,8 @@ import os
 from typing import Any, Dict, Optional
 
 DEFAULTS: Dict[str, Any] = {
-    "preview": "auto",  # true | false | "auto" (on when the popup is wide enough)
+    # true | false (hidden until ^o) | "auto" (on when the popup is wide enough)
+    "preview": "auto",
     "mouse": True,
     "spinner": True,
     "refresh_ms": 900,
@@ -62,11 +63,24 @@ class Config(object):
             return cls()
         return cls(data)
 
-    def wants_preview(self, available_width: int, threshold: int = 92) -> bool:
-        if self.preview is True:
+    def preview_starts_on(self) -> bool:
+        """Whether the preview is showing before anyone presses ^o.
+
+        ``false`` means "start hidden", not "stay hidden": the toggle keeps
+        working for the rest of the run.
+        """
+        return self.preview is not False
+
+    def fits_preview(
+        self, available_width: int, chosen: bool = False, threshold: int = 92
+    ) -> bool:
+        """Whether the popup is wide enough to split a preview column off it.
+
+        ``"auto"`` holds out for a roomy popup. A preview someone picked --
+        either ``true`` in the config or a press of ^o -- makes do with less.
+        """
+        if chosen or self.preview is True or self.preview is False:
             return available_width >= 60
-        if self.preview is False:
-            return False
         return available_width >= threshold
 
     def wants_workspaces(self, workspace_count: int) -> bool:

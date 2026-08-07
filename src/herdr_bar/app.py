@@ -101,7 +101,9 @@ class Bar(object):
         self.scope = "all"
         self.selected = 0
         self.offset = 0
-        self.preview_enabled = config.preview is not False
+        self.preview_enabled = config.preview_starts_on()
+        self.preview_chosen = False
+        self._preview_showing = self.preview_enabled
         self.workspace_count = 0
         self.current_key: Optional[str] = None
         self.current_title = ""
@@ -378,7 +380,11 @@ class Bar(object):
             self.delete_word()
             return None
         if name == "ctrl+o":
-            self.preview_enabled = not self.preview_enabled
+            # Flip what is on screen, not a hidden wish: in a popup too narrow
+            # for "auto" the preview is off even though it is enabled, and one
+            # press should bring it up rather than agree it is already gone.
+            self.preview_enabled = not self._preview_showing
+            self.preview_chosen = True
             self._dirty = True
             return None
         if name == "ctrl+r":
@@ -669,7 +675,10 @@ class Bar(object):
 
     def draw(self, terminal: Terminal) -> None:
         width, height = terminal.size()
-        preview_on = self.preview_enabled and self.config.wants_preview(max(0, width - 2))
+        preview_on = self.preview_enabled and self.config.fits_preview(
+            max(0, width - 2), self.preview_chosen
+        )
+        self._preview_showing = preview_on
         layout = compute_layout(width, height, preview_on)
         self._list_top = layout.list_top
         self._list_height = layout.list_height

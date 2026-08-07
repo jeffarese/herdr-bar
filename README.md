@@ -162,7 +162,7 @@ Optional. Write `config.json` in the plugin config directory
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `preview` | `"auto"` | `true`, `false`, or `"auto"` (on when the popup is wide enough) |
+| `preview` | `"auto"` | `true`, `false` (hidden until `ctrl+o`), or `"auto"` (on when the popup is wide enough) |
 | `mouse` | `true` | click and wheel support |
 | `spinner` | `true` | animate the working glyph |
 | `refresh_ms` | `900` | how often the open bar re-reads the session |

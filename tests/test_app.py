@@ -251,6 +251,32 @@ class KeyTest(unittest.TestCase):
         press(instance, b"\x0f")
         self.assertNotEqual(before, instance.preview_enabled)
 
+    def test_preview_false_is_a_starting_point_not_a_lock(self):
+        instance = bar(config=Config({"preview": False}))
+        self.assertFalse(instance.preview_enabled)
+        press(instance, b"\x0f")
+        self.assertTrue(instance.preview_enabled)
+
+
+class ConfigPreviewTest(unittest.TestCase):
+    def test_false_hides_the_preview_to_begin_with(self):
+        config = Config({"preview": False})
+        self.assertFalse(config.preview_starts_on())
+        self.assertTrue(config.fits_preview(120, chosen=True))
+
+    def test_auto_waits_for_a_wide_popup_unless_asked(self):
+        config = Config()
+        self.assertTrue(config.preview_starts_on())
+        self.assertFalse(config.fits_preview(88))
+        self.assertTrue(config.fits_preview(88, chosen=True))
+        self.assertTrue(config.fits_preview(120))
+
+    def test_true_keeps_the_preview_in_narrower_popups(self):
+        config = Config({"preview": True})
+        self.assertTrue(config.preview_starts_on())
+        self.assertTrue(config.fits_preview(70))
+        self.assertFalse(config.fits_preview(40))
+
 
 class MouseTest(unittest.TestCase):
     def test_wheel_scrolls_the_selection(self):
