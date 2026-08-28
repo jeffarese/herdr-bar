@@ -21,7 +21,7 @@ from .theme import Theme
 SCOPES = ("all", "agent", "tab", "blocked")
 SCOPE_SIGILS = {"@": "agent", "$": "tab", "!": "blocked"}
 SCOPE_CHIPS = {
-    "all": "",
+    "all": "everything",
     "agent": "@ agents",
     "tab": "$ shells",
     "blocked": "! needs you",
@@ -775,7 +775,7 @@ class Bar(object):
                 layout.list_width,
                 self.query,
                 bool(self.items),
-                self.scope != "all",
+                SCOPE_CHIPS.get(self.scope, "") if self.scope != "all" else "",
             )
             top = max(0, (layout.list_height - len(empty)) // 2)
             return [""] * top + empty

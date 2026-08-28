@@ -347,8 +347,8 @@ def render_input(
     chip_width = 0
     prompt_width = display_width(prompt_text) + 1
     if chip and width > display_width(chip) + prompt_width + 24:
-        chip_text = chip
-        chip_width = display_width(chip) + 2
+        chip_text = " " + chip + " "
+        chip_width = display_width(chip_text)
 
     field_width = max(1, width - prompt_width - chip_width)
     prompt = _segments_to_text(theme, [Segment("accent", prompt_text + " ", True)])
@@ -377,7 +377,12 @@ def render_input(
 
     if chip_text:
         padding = max(1, width - used - display_width(chip_text))
-        rendered += " " * padding + _segments_to_text(theme, [Segment("accent", chip_text)])
+        rendered += (
+            " " * padding
+            + "\x1b[7m"
+            + _segments_to_text(theme, [Segment("accent", chip_text, True)])
+            + "\x1b[27m"
+        )
     return rendered
 
 
@@ -434,7 +439,7 @@ def render_confirm(theme: Theme, width: int, title: str, agents: int) -> str:
 
 
 def render_empty_state(
-    theme: Theme, width: int, query: str, has_items: bool, scoped: bool
+    theme: Theme, width: int, query: str, has_items: bool, filter_name: str
 ) -> List[str]:
     if not has_items:
         headline = "nothing to jump to"
@@ -444,8 +449,8 @@ def render_empty_state(
         headline = "no matches"
         detail = "for “%s”" % truncate(query, max(6, width - 12))
         hint = "^u clears the query"
-    elif scoped:
-        headline = "nothing in this filter"
+    elif filter_name:
+        headline = "nothing in %s" % filter_name
         detail = ""
         hint = "⇥ next filter · ⌫ back to everything"
     else:
