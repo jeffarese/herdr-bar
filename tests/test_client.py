@@ -103,12 +103,14 @@ class SocketTransportTest(unittest.TestCase):
         client.focus_tab("w1:t1")
         client.focus_workspace("w1")
         client.focus_agent("w1:p1")
+        client.focus_pane("w1:p2")
         self.assertEqual(
             [(r["method"], r["params"]) for r in server.requests],
             [
                 ("tab.focus", {"tab_id": "w1:t1"}),
                 ("workspace.focus", {"workspace_id": "w1"}),
                 ("agent.focus", {"target": "w1:p1"}),
+                ("pane.focus", {"pane_id": "w1:p2"}),
             ],
         )
 

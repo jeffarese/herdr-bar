@@ -4,7 +4,7 @@ version = "0.2.1"
 # 0.7.4 is the first release with session-modal popup plugin panes;
 # session.snapshot (the whole model in one call) landed in 0.7.2.
 min_herdr_version = "0.7.4"
-description = "Cmd+K command bar: fuzzy-jump to any tab or agent"
+description = "Cmd+K command bar: fuzzy-jump to any tab, pane, or agent"
 platforms = ["linux", "macos"]
 
 # Opening the bar is a one-liner through the Herdr CLI, so the action stays a
@@ -14,7 +14,7 @@ platforms = ["linux", "macos"]
 [[actions]]
 id = "open"
 title = "Open bar"
-description = "Fuzzy-jump to any tab or agent"
+description = "Fuzzy-jump to any tab, pane, or agent"
 contexts = ["global"]
 command = [
   "sh",
@@ -25,7 +25,7 @@ command = [
 [[panes]]
 id = "bar"
 title = "Bar"
-description = "Fuzzy-jump to any tab or agent"
+description = "Fuzzy-jump to any tab, pane, or agent"
 placement = "popup"
 width = "74%"
 height = "62%"

@@ -1,6 +1,14 @@
 import unittest
 
-from herdr_bar.items import KIND_AGENT, KIND_SPACE, KIND_TAB, build_items, shorten_path
+from herdr_bar.items import (
+    KIND_AGENT,
+    KIND_PANE,
+    KIND_SPACE,
+    KIND_TAB,
+    build_items,
+    build_pane_items,
+    shorten_path,
+)
 
 from . import fixtures
 
@@ -77,6 +85,24 @@ class BuildItemsTest(unittest.TestCase):
     def test_missing_records_do_not_raise(self):
         self.assertEqual(build_items({}), [])
         self.assertEqual(build_items({"tabs": [{}], "agents": [{}]}), [])
+
+    def test_pane_rows_lead_with_their_names(self):
+        panes = build_pane_items(fixtures.snapshot())
+        named = next(item for item in panes if item.pane_id == "w1:p7")
+        self.assertEqual(named.kind, KIND_PANE)
+        self.assertEqual(named.title, "server logs")
+        self.assertEqual(named.detail, "server")
+        self.assertEqual(named.key, "pane:w1:p7")
+
+    def test_pane_rows_fall_back_to_terminal_titles(self):
+        panes = build_pane_items(fixtures.snapshot())
+        agent_pane = next(item for item in panes if item.pane_id == "w1:p4")
+        self.assertEqual(agent_pane.title, "cards meaningless")
+
+    def test_pane_rows_mark_the_exact_focused_pane(self):
+        panes = build_pane_items(fixtures.snapshot())
+        focused = [item for item in panes if item.focused]
+        self.assertEqual([item.pane_id for item in focused], ["w1:p3"])
 
     def test_control_characters_are_stripped_from_titles(self):
         snapshot = fixtures.snapshot()

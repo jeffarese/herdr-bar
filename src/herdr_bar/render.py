@@ -17,7 +17,7 @@ import os
 from typing import Dict, List, Mapping, NamedTuple, Optional, Sequence, Tuple
 
 from .age import format_age
-from .items import KIND_SPACE, Item
+from .items import KIND_PANE, KIND_SPACE, Item
 from .textutil import display_width, pad, truncate, truncate_middle, window_positions
 from .theme import BOLD, RESET, UNDERLINE, Theme
 
@@ -275,6 +275,8 @@ def render_row(
         meta.append(_chunk(theme, glyph_role, word, _field_marks(row, word)))
     if item.kind == KIND_SPACE:
         meta.append(_chunk(theme, "muted", "space", _field_marks(row, "space")))
+    elif item.kind == KIND_PANE:
+        meta.append(_chunk(theme, "muted", "pane", _field_marks(row, "pane")))
 
     fixed = _plain_width([marker, glyph])
     available = max(0, width - fixed)

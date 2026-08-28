@@ -3,7 +3,8 @@
 The rule is one row per agent, plus one row per tab that has no agent, plus one
 row per workspace once a session has more than one. That mirrors how people
 think about a Herdr session: you jump to an agent, or to a plain terminal tab,
-or to a whole project.
+or to a whole project. Pane rows are built separately for the dedicated pane
+filter, where duplicating those higher-level rows is intentional.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ import os
 from typing import Any, Dict, List, Optional, Sequence
 
 KIND_AGENT = "agent"
+KIND_PANE = "pane"
 KIND_TAB = "tab"
 KIND_SPACE = "space"
 
@@ -272,4 +274,59 @@ def build_items(snapshot: Dict[str, Any]) -> List[Item]:
                 )
             )
 
+    return items
+
+
+def build_pane_items(snapshot: Dict[str, Any]) -> List[Item]:
+    """Build one directly focusable row for every pane in the snapshot."""
+    workspaces: List[Dict[str, Any]] = list(snapshot.get("workspaces") or [])
+    tabs: List[Dict[str, Any]] = list(snapshot.get("tabs") or [])
+    panes: List[Dict[str, Any]] = list(snapshot.get("panes") or [])
+
+    focused_pane_id = snapshot.get("focused_pane_id")
+    workspace_labels = {
+        ws.get("workspace_id"): _first(ws.get("label"), "workspace %s" % ws.get("number", ""))
+        for ws in workspaces
+    }
+    tabs_by_id = {tab.get("tab_id"): tab for tab in tabs if tab.get("tab_id")}
+
+    items: List[Item] = []
+    for pane in panes:
+        pane_id = pane.get("pane_id")
+        tab_id = pane.get("tab_id")
+        if not pane_id or not tab_id:
+            continue
+        tab = tabs_by_id.get(tab_id, {})
+        workspace_id = pane.get("workspace_id") or tab.get("workspace_id") or ""
+        workspace_label = workspace_labels.get(workspace_id, "")
+        tab_label = _first(tab.get("label"))
+        tab_number = tab.get("number") if isinstance(tab.get("number"), int) else None
+        cwd = shorten_path(_first(pane.get("foreground_cwd"), pane.get("cwd")))
+        terminal_title = _first(pane.get("terminal_title_stripped"), pane.get("title"))
+        title = _first(
+            pane.get("label"),
+            terminal_title,
+            tab_label,
+            os.path.basename(cwd),
+            "pane",
+        )
+        detail = tab_label if tab_label and tab_label.lower() != title.lower() else ""
+        items.append(
+            Item(
+                kind=KIND_PANE,
+                key="pane:%s" % pane_id,
+                title=title,
+                detail=detail,
+                subtitle=cwd,
+                workspace_id=workspace_id,
+                workspace_label=workspace_label,
+                tab_id=tab_id,
+                pane_id=pane_id,
+                agent=_first(pane.get("display_agent"), pane.get("agent")) or None,
+                status=_status_of(pane),
+                tab_number=tab_number,
+                focused=pane_id == focused_pane_id,
+                extra_terms=("pane", pane_id, terminal_title),
+            )
+        )
     return items

@@ -83,7 +83,9 @@ def snapshot() -> Dict[str, Any]:
     ]
     panes = [
         {"pane_id": "w1:p1", "tab_id": "w1:t1", "workspace_id": "w1",
-         "cwd": "/Users/dev/workspace/pacebeats", "focused": False},
+         "label": "web server", "cwd": "/Users/dev/workspace/pacebeats", "focused": False},
+        {"pane_id": "w1:p7", "tab_id": "w1:t1", "workspace_id": "w1",
+         "label": "server logs", "cwd": "/Users/dev/workspace/pacebeats", "focused": False},
         {"pane_id": "w1:p6", "tab_id": "w1:t6", "workspace_id": "w1",
          "cwd": "/Users/dev/workspace/pacebeats", "focused": False},
     ]
@@ -115,6 +117,7 @@ PANE_AGES = {
     "w1:p4": 2 * 3600 + 4 * 60.0,
     "w1:p5": 3 * 3600 + 41 * 60.0,
     "w1:p6": 26 * 3600.0,
+    "w1:p7": 26 * 3600.0,
     "w2:p1": 8 * 60.0,
     "w2:p2": 55 * 60.0,
 }

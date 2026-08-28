@@ -3,7 +3,7 @@ import unittest
 from herdr_bar.app import Bar, jump, score_item
 from herdr_bar.client import HerdrError
 from herdr_bar.config import Config
-from herdr_bar.items import KIND_AGENT, KIND_SPACE, KIND_TAB
+from herdr_bar.items import KIND_AGENT, KIND_PANE, KIND_SPACE, KIND_TAB
 from herdr_bar.keys import Event, KeyDecoder
 from herdr_bar.mru import Recents
 from herdr_bar.theme import Theme
@@ -60,6 +60,9 @@ class FakeClient(object):
 
     def focus_agent(self, target):
         self.calls.append(("agent", target))
+
+    def focus_pane(self, pane_id):
+        self.calls.append(("pane", pane_id))
 
 
 def bar(recents=None, client=None, config=None):
@@ -160,6 +163,13 @@ class ScopeTest(unittest.TestCase):
         instance.insert("$")
         self.assertEqual(sorted(titles(instance)), ["logs", "server"])
 
+    def test_pane_sigil_shows_every_pane_by_name(self):
+        instance = bar()
+        instance.insert("%")
+        self.assertEqual(instance.scope, "pane")
+        self.assertTrue(all(row.item.kind == KIND_PANE for row in instance.rows))
+        self.assertIn("server logs", titles(instance))
+
     def test_needs_you_sigil_shows_blocked_and_done(self):
         instance = bar()
         instance.insert("!")
@@ -182,8 +192,12 @@ class ScopeTest(unittest.TestCase):
         instance = bar()
         instance.cycle_scope(1)
         self.assertEqual(instance.scope, "agent")
+        instance.cycle_scope(1)
+        self.assertEqual(instance.scope, "pane")
+        instance.cycle_scope(1)
+        self.assertEqual(instance.scope, "tab")
         instance.cycle_scope(-1)
-        self.assertEqual(instance.scope, "all")
+        self.assertEqual(instance.scope, "pane")
 
 
 class KeyTest(unittest.TestCase):
@@ -352,6 +366,14 @@ class JumpTest(unittest.TestCase):
         item = next(item for item in instance.items if item.kind == KIND_SPACE)
         jump(client, item)
         self.assertEqual(client.calls, [("workspace", item.workspace_id)])
+
+    def test_pane_rows_focus_the_tab_and_exact_pane(self):
+        client = FakeClient()
+        instance = bar(client=client)
+        instance.insert("%")
+        item = next(item for item in instance.rows if item.item.pane_id == "w1:p7").item
+        jump(client, item)
+        self.assertEqual(client.calls, [("tab", "w1:t1"), ("pane", "w1:p7")])
 
 
 def escape(instance):

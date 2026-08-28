@@ -205,3 +205,10 @@ class HerdrClient:
 
     def focus_agent(self, target: str) -> None:
         self.call("agent.focus", {"target": target}, ["agent", "focus", target])
+
+    def focus_pane(self, pane_id: str) -> None:
+        self.call(
+            "pane.focus",
+            {"pane_id": pane_id},
+            ["pane", "focus", "--pane", pane_id],
+        )
