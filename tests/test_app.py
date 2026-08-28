@@ -108,9 +108,10 @@ class ScoreItemTest(unittest.TestCase):
 
 
 class FilterTest(unittest.TestCase):
-    def test_empty_query_lists_everything(self):
+    def test_empty_query_lists_regular_items_and_named_panes(self):
         instance = bar()
-        self.assertEqual(len(instance.rows), len(instance.items))
+        self.assertEqual(len(instance.rows), len(instance.items) + len(instance.pane_items))
+        self.assertIn("server logs", titles(instance))
 
     def test_typing_filters_the_list(self):
         instance = bar()
@@ -122,6 +123,15 @@ class FilterTest(unittest.TestCase):
         instance.set_query("server logs")
         self.assertEqual(titles(instance)[0], "server logs")
         self.assertEqual(instance.rows[0].item.kind, KIND_PANE)
+
+    def test_named_current_pane_does_not_replace_the_current_agent_row(self):
+        snapshot = fixtures.snapshot()
+        focused = next(pane for pane in snapshot["panes"] if pane["pane_id"] == "w1:p3")
+        focused["label"] = "current editor"
+        instance = bar(client=FakeClient(snapshot))
+        keys = [row.item.key for row in instance.rows]
+        self.assertIn("w1:p3", keys)
+        self.assertIn("pane:w1:p3", keys)
 
     def test_search_reaches_the_working_directory(self):
         instance = bar()

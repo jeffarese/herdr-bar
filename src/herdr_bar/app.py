@@ -195,7 +195,7 @@ class Bar(object):
     def _filter(self) -> List[Row]:
         if self.scope == "pane":
             source = self.pane_items
-        elif self.scope == "all" and self.query:
+        elif self.scope == "all":
             source = self.items + self.pane_items
         else:
             source = self.items
@@ -229,7 +229,9 @@ class Bar(object):
         rest: List[Item] = []
         current: Optional[Item] = None
         for item in items:
-            if item.key == self.current_key or (item.kind == KIND_PANE and item.focused):
+            if item.key == self.current_key or (
+                self.scope == "pane" and item.kind == KIND_PANE and item.focused
+            ):
                 current = item
                 continue
             rank = self.recents.rank(item.key, item.title)
@@ -854,7 +856,7 @@ class Bar(object):
             hints = [("↑↓", ""), ("⏎", ""), ("esc", "")]
         if self.scope == "pane":
             total = len(self.pane_items)
-        elif self.scope == "all" and self.query:
+        elif self.scope == "all":
             total = len(self.items) + len(self.pane_items)
         else:
             total = len(self.items)
