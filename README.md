@@ -109,9 +109,10 @@ Whichever you pick, Cmd+K is likely already taken by the terminal (usually
 session has more than one — every workspace. Selecting an agent focuses its tab
 and its pane; selecting a workspace focuses the workspace.
 
-`% panes` switches to one row per pane, with a pane's assigned name first. This
-view stays separate from Everything so every agent and single-pane tab is not
-duplicated there. Selecting a pane focuses its tab and that exact pane.
+`% panes` switches to one row per named pane. Unnamed panes stay out of the
+list, and the pane view stays separate from Everything so every named agent
+pane is not duplicated in its idle list. Named panes still participate in
+Everything searches. Selecting a pane focuses its tab and that exact pane.
 
 **What a row says.** The tab's own name comes first — that is what you named
 the work and what you remember it by — and an agent's current summary follows it

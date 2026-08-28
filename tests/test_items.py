@@ -94,15 +94,16 @@ class BuildItemsTest(unittest.TestCase):
         self.assertEqual(named.detail, "server")
         self.assertEqual(named.key, "pane:w1:p7")
 
-    def test_pane_rows_fall_back_to_terminal_titles(self):
+    def test_unnamed_panes_do_not_get_rows(self):
         panes = build_pane_items(fixtures.snapshot())
-        agent_pane = next(item for item in panes if item.pane_id == "w1:p4")
-        self.assertEqual(agent_pane.title, "cards meaningless")
+        self.assertEqual(sorted(item.pane_id for item in panes), ["w1:p1", "w1:p7"])
 
-    def test_pane_rows_mark_the_exact_focused_pane(self):
-        panes = build_pane_items(fixtures.snapshot())
+    def test_a_named_focused_pane_is_marked(self):
+        snapshot = fixtures.snapshot()
+        snapshot["focused_pane_id"] = "w1:p7"
+        panes = build_pane_items(snapshot)
         focused = [item for item in panes if item.focused]
-        self.assertEqual([item.pane_id for item in focused], ["w1:p3"])
+        self.assertEqual([item.pane_id for item in focused], ["w1:p7"])
 
     def test_control_characters_are_stripped_from_titles(self):
         snapshot = fixtures.snapshot()

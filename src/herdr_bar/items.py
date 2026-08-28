@@ -3,8 +3,8 @@
 The rule is one row per agent, plus one row per tab that has no agent, plus one
 row per workspace once a session has more than one. That mirrors how people
 think about a Herdr session: you jump to an agent, or to a plain terminal tab,
-or to a whole project. Pane rows are built separately for the dedicated pane
-filter, where duplicating those higher-level rows is intentional.
+or to a whole project. Named pane rows are built separately for the dedicated
+pane filter, where duplicating those higher-level rows is intentional.
 """
 
 from __future__ import annotations
@@ -278,7 +278,7 @@ def build_items(snapshot: Dict[str, Any]) -> List[Item]:
 
 
 def build_pane_items(snapshot: Dict[str, Any]) -> List[Item]:
-    """Build one directly focusable row for every pane in the snapshot."""
+    """Build one directly focusable row for every named pane in the snapshot."""
     workspaces: List[Dict[str, Any]] = list(snapshot.get("workspaces") or [])
     tabs: List[Dict[str, Any]] = list(snapshot.get("tabs") or [])
     panes: List[Dict[str, Any]] = list(snapshot.get("panes") or [])
@@ -294,7 +294,8 @@ def build_pane_items(snapshot: Dict[str, Any]) -> List[Item]:
     for pane in panes:
         pane_id = pane.get("pane_id")
         tab_id = pane.get("tab_id")
-        if not pane_id or not tab_id:
+        pane_label = _clean(pane.get("label"))
+        if not pane_id or not tab_id or not pane_label:
             continue
         tab = tabs_by_id.get(tab_id, {})
         workspace_id = pane.get("workspace_id") or tab.get("workspace_id") or ""
@@ -303,13 +304,7 @@ def build_pane_items(snapshot: Dict[str, Any]) -> List[Item]:
         tab_number = tab.get("number") if isinstance(tab.get("number"), int) else None
         cwd = shorten_path(_first(pane.get("foreground_cwd"), pane.get("cwd")))
         terminal_title = _first(pane.get("terminal_title_stripped"), pane.get("title"))
-        title = _first(
-            pane.get("label"),
-            terminal_title,
-            tab_label,
-            os.path.basename(cwd),
-            "pane",
-        )
+        title = pane_label
         detail = tab_label if tab_label and tab_label.lower() != title.lower() else ""
         items.append(
             Item(

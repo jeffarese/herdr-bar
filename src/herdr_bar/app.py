@@ -193,7 +193,12 @@ class Bar(object):
         return True
 
     def _filter(self) -> List[Row]:
-        source = self.pane_items if self.scope == "pane" else self.items
+        if self.scope == "pane":
+            source = self.pane_items
+        elif self.scope == "all" and self.query:
+            source = self.items + self.pane_items
+        else:
+            source = self.items
         candidates = [item for item in source if self._in_scope(item)]
         terms = split_query(self.query)
         if not terms:
@@ -847,7 +852,12 @@ class Bar(object):
         ]
         if width < 52:
             hints = [("↑↓", ""), ("⏎", ""), ("esc", "")]
-        total = len(self.pane_items) if self.scope == "pane" else len(self.items)
+        if self.scope == "pane":
+            total = len(self.pane_items)
+        elif self.scope == "all" and self.query:
+            total = len(self.items) + len(self.pane_items)
+        else:
+            total = len(self.items)
         shown = len(self.rows)
         counter = "%d/%d" % (shown, total) if shown != total else "%d" % total
         return render.render_footer(self.theme, width, hints, counter)

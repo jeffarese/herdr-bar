@@ -117,6 +117,12 @@ class FilterTest(unittest.TestCase):
         instance.set_query("retry")
         self.assertEqual(titles(instance)[0], "retry queue backoff")
 
+    def test_everything_search_includes_named_panes(self):
+        instance = bar()
+        instance.set_query("server logs")
+        self.assertEqual(titles(instance)[0], "server logs")
+        self.assertEqual(instance.rows[0].item.kind, KIND_PANE)
+
     def test_search_reaches_the_working_directory(self):
         instance = bar()
         instance.set_query("worktrees")
@@ -163,12 +169,12 @@ class ScopeTest(unittest.TestCase):
         instance.insert("$")
         self.assertEqual(sorted(titles(instance)), ["logs", "server"])
 
-    def test_pane_sigil_shows_every_pane_by_name(self):
+    def test_pane_sigil_shows_only_named_panes(self):
         instance = bar()
         instance.insert("%")
         self.assertEqual(instance.scope, "pane")
         self.assertTrue(all(row.item.kind == KIND_PANE for row in instance.rows))
-        self.assertIn("server logs", titles(instance))
+        self.assertEqual(sorted(titles(instance)), ["server logs", "web server"])
 
     def test_needs_you_sigil_shows_blocked_and_done(self):
         instance = bar()
