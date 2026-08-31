@@ -62,6 +62,16 @@ _ROWS = [
     ("w3", 4, "docs", "Document the keyboard table", "working", "gemini", None, "/docs"),
 ]
 
+# The panes someone bothered to name. herdr keeps the name on the pane itself,
+# so these are the rows the "%" filter lists, and the only panes that also show
+# up in the everything view. The rest stay out of both.
+PANE_LABELS = {
+    "w1:p1": "next dev",
+    "w1:p6": "tail worker",
+    "w1:p9": "jest watch",
+    "w2:p4": "db",
+}
+
 FOCUSED_TAB = "w1:t3"
 FOCUSED_PANE = "w1:p3"
 
@@ -126,9 +136,11 @@ def snapshot() -> Dict[str, Any]:
             pane = dict(record, agent=agent, agent_status=status)
             if summary:
                 pane["title"] = summary
-            panes.append(pane)
         else:
-            panes.append(record)
+            pane = record
+        if pane_id in PANE_LABELS:
+            pane["label"] = PANE_LABELS[pane_id]
+        panes.append(pane)
 
     return {
         "version": "0.7.5",

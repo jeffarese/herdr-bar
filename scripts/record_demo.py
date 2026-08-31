@@ -372,7 +372,7 @@ def perform(recorder: Recorder) -> None:
     recorder.repeat("down", 4, 0.5)
     recorder.hold(0.7)
 
-    recorder.say("twenty-one rows, and it scrolls")
+    recorder.say("twenty-five rows, and it scrolls")
     recorder.repeat("down", 7, 0.19)
     recorder.hold(1.1)
 
@@ -401,9 +401,16 @@ def perform(recorder: Recorder) -> None:
     recorder.type("!", 0.2)
     recorder.hold(2.1)
 
-    recorder.say("⇥ cycles the scopes · everything, agents, shells, needs you")
+    recorder.say("% is the panes you named · ⏎ focuses that exact pane")
     recorder.key("ctrl+u", 0.25)
-    recorder.repeat("tab", 3, 1.15)
+    recorder.type("%", 0.2)
+    recorder.hold(1.7)
+    recorder.repeat("down", 2, 0.6)
+    recorder.hold(0.9)
+
+    recorder.say("⇥ cycles the scopes · everything, agents, panes, shells, needs you")
+    recorder.key("ctrl+u", 0.25)
+    recorder.repeat("tab", 4, 1.1)
     recorder.key("tab", 0.8)
 
     recorder.say("^r renames the tab behind any row · enter saves, esc keeps")
