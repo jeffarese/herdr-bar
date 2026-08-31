@@ -208,7 +208,7 @@ git clone https://github.com/jeffarese/herdr-bar
 cd herdr-bar
 herdr plugin link .
 
-PYTHONPATH=src python3 -m unittest discover -s tests -t .   # 179, no deps
+PYTHONPATH=src python3 -m unittest discover -s tests -t .   # 300, no deps
 python3 run.py --doctor                         # environment diagnostics
 python3 run.py --list                           # the rows, as JSON
 python3 scripts/demo.py                         # run against fixture data
@@ -219,6 +219,13 @@ ruff check .                                    # lint, if you have it
 `scripts/demo.py` needs no herdr server, which makes it the fastest way to work
 on the UI. `herdr plugin log list --plugin herdr-bar` shows what herdr
 recorded when it launched the plugin.
+
+## Goes well with
+
+[herdr-newtab-plus](https://github.com/jeffarese/herdr-newtab-plus) is the
+other half of the loop. This bar jumps you to the tabs you already have; that
+plugin opens the one you don't — it asks which folder and which agent,
+completes real paths, remembers where you work, and starts the agent for you.
 
 ## License
 
