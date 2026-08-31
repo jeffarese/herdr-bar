@@ -2,18 +2,25 @@
 
 ## Unreleased
 
+## 0.3.0
+
 - `%` filters to named panes: one row per pane you gave a name with
   `herdr pane rename`, led by that name, and Enter focuses that exact pane.
   Named panes also show up in Everything and its searches; unnamed panes stay
   out of the way. (#5, thanks @silva96)
 - The top bar always names the active filter — `everything`, `@ agents`,
-  `$ shells`, or `! needs you` — as a highlighted label, instead of showing a
-  chip only when a filter is on. A scoped empty state names the filter that
-  came up empty rather than saying "this filter". (#4, thanks @silva96)
+  `% panes`, `$ shells`, or `! needs you` — as a highlighted label, instead of
+  showing a chip only when a filter is on. A scoped empty state names the
+  filter that came up empty rather than saying "this filter". (#4, thanks
+  @silva96)
 - `ctrl+j` moves the selection down, as documented, instead of confirming the
   row: the decoder read its `0x0A` byte as Enter, so the movement binding
   never fired. Enter itself is unaffected — terminals send `0x0D` for it.
   (#6, thanks @skarakayali-lh)
+- The deterministic README demo now shows the `%` panes filter and the
+  always-visible filter label, and the README points at
+  [herdr-newtab-plus](https://github.com/jeffarese/herdr-newtab-plus) for the
+  tab-opening half of the loop.
 
 ## 0.2.1
 
