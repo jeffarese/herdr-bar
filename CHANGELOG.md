@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `ctrl+j` moves the selection down, as documented, instead of confirming the
+  row: the decoder read its `0x0A` byte as Enter, so the movement binding
+  never fired. Enter itself is unaffected — terminals send `0x0D` for it.
+  (#6, thanks @skarakayali-lh)
+
 ## 0.2.1
 
 - `"preview": false` now means the preview starts hidden rather than staying
