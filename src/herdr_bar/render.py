@@ -109,6 +109,10 @@ def _segments_to_text(theme: Theme, segments: Sequence[Segment], background: str
     return "".join(out)
 
 
+def _highlighted_label(theme: Theme, text: str) -> str:
+    return _segments_to_text(theme, [Segment("accent", text, True)])
+
+
 def _plain_width(segments: Sequence[Segment]) -> int:
     return sum(display_width(segment.text) for segment in segments)
 
@@ -347,8 +351,8 @@ def render_input(
     chip_width = 0
     prompt_width = display_width(prompt_text) + 1
     if chip and width > display_width(chip) + prompt_width + 24:
-        chip_text = chip
-        chip_width = display_width(chip) + 2
+        chip_text = " " + chip + " "
+        chip_width = display_width(chip_text)
 
     field_width = max(1, width - prompt_width - chip_width)
     prompt = _segments_to_text(theme, [Segment("accent", prompt_text + " ", True)])
@@ -377,7 +381,7 @@ def render_input(
 
     if chip_text:
         padding = max(1, width - used - display_width(chip_text))
-        rendered += " " * padding + _segments_to_text(theme, [Segment("accent", chip_text)])
+        rendered += " " * padding + _highlighted_label(theme, chip_text)
     return rendered
 
 
@@ -434,8 +438,9 @@ def render_confirm(theme: Theme, width: int, title: str, agents: int) -> str:
 
 
 def render_empty_state(
-    theme: Theme, width: int, query: str, has_items: bool, scoped: bool
+    theme: Theme, width: int, query: str, has_items: bool, filter_name: str
 ) -> List[str]:
+    highlighted_filter = ""
     if not has_items:
         headline = "nothing to jump to"
         detail = "open a tab or start an agent"
@@ -444,8 +449,9 @@ def render_empty_state(
         headline = "no matches"
         detail = "for “%s”" % truncate(query, max(6, width - 12))
         hint = "^u clears the query"
-    elif scoped:
-        headline = "nothing in this filter"
+    elif filter_name:
+        headline = "nothing in %s filter" % filter_name
+        highlighted_filter = filter_name
         detail = ""
         hint = "⇥ next filter · ⌫ back to everything"
     else:
@@ -453,18 +459,26 @@ def render_empty_state(
         detail = ""
         hint = ""
     lines = []
-    for text, role, bold in (
-        (headline, "text", True),
-        (detail, "muted", False),
-        (hint, "unknown", False),
+    for text, role, bold, selected_label in (
+        (headline, "text", True, highlighted_filter),
+        (detail, "muted", False, ""),
+        (hint, "unknown", False, ""),
     ):
         if not text:
             continue
-        text = truncate(text, width)
+        if selected_label and display_width(text) <= width:
+            before = "nothing in "
+            after = " filter"
+            rendered = (
+                _segments_to_text(theme, [Segment(role, before, bold)])
+                + _highlighted_label(theme, selected_label)
+                + _segments_to_text(theme, [Segment(role, after, bold)])
+            )
+        else:
+            text = truncate(text, width)
+            rendered = _segments_to_text(theme, [Segment(role, text, bold)])
         left = max(0, (width - display_width(text)) // 2)
-        lines.append(
-            pad(" " * left + _segments_to_text(theme, [Segment(role, text, bold)]), width)
-        )
+        lines.append(pad(" " * left + rendered, width))
     return lines
 
 

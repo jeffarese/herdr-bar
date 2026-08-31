@@ -11,6 +11,7 @@ from herdr_bar.render import (
     Row,
     compute_layout,
     render_confirm,
+    render_empty_state,
     render_footer,
     render_input,
     render_row,
@@ -166,6 +167,29 @@ class ContentTest(unittest.TestCase):
         _, typed = draw(110, 20, "week")
         self.assertIn("jump to a tab", empty[0])
         self.assertNotIn("jump to a tab", typed[0])
+
+    def test_top_bar_highlights_the_active_filter(self):
+        _, all_rows = draw(110, 20)
+        _, agent_rows = draw(110, 20, scope="agent")
+        accent = Theme().fg("accent")
+        self.assertIn(accent + " everything ", all_rows[0])
+        self.assertIn("everything", strip_ansi(all_rows[0]))
+        self.assertIn(accent + " @ agents ", agent_rows[0])
+        self.assertIn("@ agents", strip_ansi(agent_rows[0]))
+
+    def test_scoped_empty_state_names_the_active_filter(self):
+        for filter_name in ("@ agents", "$ shells", "! needs you"):
+            theme = Theme()
+            lines = render_empty_state(theme, 60, "", True, filter_name)
+            rendered = "\n".join(lines)
+            message = strip_ansi(rendered)
+            self.assertIn("nothing in %s filter" % filter_name, message)
+            self.assertNotIn("this filter", message)
+            self.assertNotIn("\x1b[7m", rendered)
+            highlight_start = rendered.index(theme.fg("accent"))
+            highlight_end = rendered.index("\x1b[0m", highlight_start)
+            self.assertIn(filter_name, rendered[highlight_start:highlight_end])
+            self.assertIn(" filter", rendered[highlight_end:])
 
     def test_selected_row_is_marked(self):
         bar, rows = draw(110, 20)
