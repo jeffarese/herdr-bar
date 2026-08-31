@@ -20,6 +20,12 @@ class DecoderTest(unittest.TestCase):
             [(KEY, "enter"), (KEY, "tab"), (KEY, "backspace"), (KEY, "ctrl+u"), (KEY, "ctrl+o")],
         )
 
+    def test_ctrl_j_and_ctrl_k(self):
+        self.assertEqual(
+            names(self.decoder.feed(b"\x0a\x0b")),
+            [(KEY, "ctrl+j"), (KEY, "ctrl+k")],
+        )
+
     def test_arrows_and_navigation(self):
         data = b"\x1b[A\x1b[B\x1b[C\x1b[D\x1b[5~\x1b[6~\x1b[H\x1b[F\x1b[3~\x1b[Z"
         self.assertEqual(

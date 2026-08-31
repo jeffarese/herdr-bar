@@ -52,7 +52,7 @@ _CTRL_NAMES = {
     0x00: "ctrl+space",
     0x08: "backspace",
     0x09: "tab",
-    0x0A: "enter",
+    0x0A: "ctrl+j",
     0x0D: "enter",
     0x1B: "esc",
     0x7F: "backspace",

@@ -206,6 +206,13 @@ class KeyTest(unittest.TestCase):
         press(instance, b"\x10")  # ctrl+p
         self.assertEqual(instance.selected, 1)
 
+    def test_vim_movement_keys(self):
+        instance = bar()
+        press(instance, b"\x0a\x0a")  # ctrl+j twice
+        self.assertEqual(instance.selected, 2)
+        press(instance, b"\x0b")  # ctrl+k
+        self.assertEqual(instance.selected, 1)
+
     def test_typing_and_editing(self):
         instance = bar()
         press(instance, b"retry")
