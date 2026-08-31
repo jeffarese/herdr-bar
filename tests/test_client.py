@@ -103,12 +103,14 @@ class SocketTransportTest(unittest.TestCase):
         client.focus_tab("w1:t1")
         client.focus_workspace("w1")
         client.focus_agent("w1:p1")
+        client.focus_pane("w1:p2")
         self.assertEqual(
             [(r["method"], r["params"]) for r in server.requests],
             [
                 ("tab.focus", {"tab_id": "w1:t1"}),
                 ("workspace.focus", {"workspace_id": "w1"}),
                 ("agent.focus", {"target": "w1:p1"}),
+                ("pane.focus", {"pane_id": "w1:p2"}),
             ],
         )
 
@@ -170,6 +172,12 @@ class CliTransportTest(unittest.TestCase):
         with self.assertRaises(HerdrError) as caught:
             client.snapshot()
         self.assertIn("not found", str(caught.exception))
+
+    def test_focus_pane_degrades_to_a_no_op_over_the_cli(self):
+        # The CLI cannot focus a pane by id, so without the socket the call
+        # must quietly leave the user on the already-focused tab.
+        client = HerdrClient(socket_path=self.absent_socket, bin_path="/nonexistent/herdr")
+        client.focus_pane("w1:p1")
 
     def test_unparseable_output_reports_clearly(self):
         with open(self.bin, "w") as handle:

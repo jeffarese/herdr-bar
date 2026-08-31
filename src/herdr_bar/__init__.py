@@ -1,3 +1,3 @@
-"""A Cmd+K style bar for jumping between Herdr tabs and agents."""
+"""A Cmd+K style bar for jumping between Herdr tabs, panes, and agents."""
 
 __version__ = "0.2.1"

@@ -9,7 +9,15 @@ from . import render
 from .client import HerdrClient, HerdrError
 from .config import Config
 from .fuzzy import match, split_query
-from .items import KIND_AGENT, KIND_SPACE, KIND_TAB, Item, build_items
+from .items import (
+    KIND_AGENT,
+    KIND_PANE,
+    KIND_SPACE,
+    KIND_TAB,
+    Item,
+    build_items,
+    build_pane_items,
+)
 from .keys import KEY, MOUSE, PASTE, PRESS, TEXT, WHEEL_DOWN, WHEEL_UP, Event, KeyDecoder
 from .mru import Recents
 from .paint import Painter
@@ -18,11 +26,12 @@ from .term import Terminal
 from .textutil import pad, sanitize
 from .theme import Theme
 
-SCOPES = ("all", "agent", "tab", "blocked")
-SCOPE_SIGILS = {"@": "agent", "$": "tab", "!": "blocked"}
+SCOPES = ("all", "agent", "pane", "tab", "blocked")
+SCOPE_SIGILS = {"@": "agent", "%": "pane", "$": "tab", "!": "blocked"}
 SCOPE_CHIPS = {
     "all": "everything",
     "agent": "@ agents",
+    "pane": "% panes",
     "tab": "$ shells",
     "blocked": "! needs you",
 }
@@ -34,8 +43,8 @@ PREVIEW_TTL = 1.5
 ESC_TIMEOUT = 0.04
 STATUS_TTL = 2.5
 
-PLACEHOLDER = "jump to a tab or agent…    @ agents   $ shells   ! needs you"
-PLACEHOLDER_SHORT = "jump to a tab or agent…"
+PLACEHOLDER = "jump to a tab, pane or agent…    @ agents   % panes   $ shells   ! needs you"
+PLACEHOLDER_SHORT = "jump to a tab, pane or agent…"
 
 
 _UNSCORED = object()
@@ -95,6 +104,7 @@ class Bar(object):
         self.theme = theme
 
         self.items: List[Item] = []
+        self.pane_items: List[Item] = []
         self.rows: List[Row] = []
         self.query = ""
         self.cursor = 0
@@ -148,6 +158,7 @@ class Bar(object):
         if not self.config.wants_workspaces(self.workspace_count):
             items = [item for item in items if item.kind != KIND_SPACE]
         self.items = items
+        self.pane_items = build_pane_items(snapshot)
         for item in items:
             if item.focused and item.kind != KIND_SPACE:
                 self.current_key = item.key
@@ -173,6 +184,8 @@ class Bar(object):
             return True
         if self.scope == "agent":
             return item.kind == KIND_AGENT
+        if self.scope == "pane":
+            return item.kind == KIND_PANE
         if self.scope == "tab":
             return item.kind == KIND_TAB
         if self.scope == "blocked":
@@ -180,7 +193,13 @@ class Bar(object):
         return True
 
     def _filter(self) -> List[Row]:
-        candidates = [item for item in self.items if self._in_scope(item)]
+        if self.scope == "pane":
+            source = self.pane_items
+        elif self.scope == "all":
+            source = self.items + self.pane_items
+        else:
+            source = self.items
+        candidates = [item for item in source if self._in_scope(item)]
         terms = split_query(self.query)
         if not terms:
             return [Row(item, ()) for item in self._resting_order(candidates)]
@@ -210,7 +229,9 @@ class Bar(object):
         rest: List[Item] = []
         current: Optional[Item] = None
         for item in items:
-            if item.key == self.current_key:
+            if item.key == self.current_key or (
+                self.scope == "pane" and item.kind == KIND_PANE and item.focused
+            ):
                 current = item
                 continue
             rank = self.recents.rank(item.key, item.title)
@@ -402,7 +423,7 @@ class Bar(object):
         if not self.rows:
             return
         item = self.selected_item()
-        if item.kind == KIND_SPACE or not item.tab_id:
+        if item.kind in (KIND_PANE, KIND_SPACE) or not item.tab_id:
             self.flash("only tabs and agents can be renamed")
             return
         self.pending_rename = (item.tab_id, item.title)
@@ -538,7 +559,7 @@ class Bar(object):
         if not self.rows:
             return
         item = self.selected_item()
-        if item.kind == KIND_SPACE or not item.tab_id:
+        if item.kind in (KIND_PANE, KIND_SPACE) or not item.tab_id:
             self.flash("only tabs and agents can be closed")
             return
         agents = sum(
@@ -833,7 +854,12 @@ class Bar(object):
         ]
         if width < 52:
             hints = [("↑↓", ""), ("⏎", ""), ("esc", "")]
-        total = len(self.items)
+        if self.scope == "pane":
+            total = len(self.pane_items)
+        elif self.scope == "all":
+            total = len(self.items) + len(self.pane_items)
+        else:
+            total = len(self.items)
         shown = len(self.rows)
         counter = "%d/%d" % (shown, total) if shown != total else "%d" % total
         return render.render_footer(self.theme, width, hints, counter)
@@ -935,3 +961,5 @@ def jump(client: HerdrClient, item: Item) -> None:
         client.focus_tab(item.tab_id)
     if item.kind == KIND_AGENT and item.pane_id:
         client.focus_agent(item.pane_id)
+    elif item.kind == KIND_PANE and item.pane_id:
+        client.focus_pane(item.pane_id)

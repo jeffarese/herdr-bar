@@ -3,7 +3,7 @@
 [![ci](https://github.com/jeffarese/herdr-bar/actions/workflows/ci.yml/badge.svg)](https://github.com/jeffarese/herdr-bar/actions/workflows/ci.yml)
 
 **Cmd+K for [herdr](https://herdr.dev).** One chord opens a search field over your
-session, you type a few letters of a tab, an agent, a repo or a branch, and Enter
+session, you type a few letters of a tab, pane, agent, repo or branch, and Enter
 takes you there. Like the Slack quick switcher, for the terminal.
 
 ![herdr-bar: type a few letters, jump to any tab or agent](assets/demo.gif)
@@ -16,6 +16,8 @@ takes you there. Like the Slack quick switcher, for the terminal.
   keeps updating while it is open.
 - **agents at a glance** — Claude, Codex, Kimi, Gemini, Cursor and OpenCode
   labels each have a distinct color in mixed-agent sessions.
+- **named panes on demand** — `%` switches to one row per pane, led by the
+  name you assigned it, and Enter focuses that exact pane.
 - **opens on what matters** — blocked and finished agents float to the top,
   recently visited rows above them, and the tab you are in is never first, so
   open-then-Enter works like alt-tab.
@@ -94,7 +96,7 @@ Whichever you pick, Cmd+K is likely already taken by the terminal (usually
 | `enter` | jump to the selected row and close |
 | `esc`, `ctrl+c`, `ctrl+g` | leave, change nothing |
 | `tab` / `shift+tab` | cycle the filter |
-| `@` `$` `!` on an empty query | filter to agents / plain tabs / rows that need you |
+| `@` `%` `$` `!` on an empty query | filter to agents / panes / plain tabs / rows that need you |
 | `backspace` on an empty query | clear the filter, then close the selected row's tab |
 | `delete` (fn+`⌫` on a Mac laptop) | close the selected row's tab, whatever is typed |
 | `ctrl+u` / `ctrl+w` / `ctrl+d` | clear the query / delete a word / forward delete |
@@ -106,6 +108,11 @@ Whichever you pick, Cmd+K is likely already taken by the terminal (usually
 **What is in the list.** Every agent, every tab that has no agent, and — once a
 session has more than one — every workspace. Selecting an agent focuses its tab
 and its pane; selecting a workspace focuses the workspace.
+
+`% panes` switches to one row per named pane. Unnamed panes stay out of the
+list. Named panes also appear in Everything and participate in its searches;
+the pane filter narrows the list to just those direct pane targets. Selecting a
+pane focuses its tab and that exact pane.
 
 **What a row says.** The tab's own name comes first — that is what you named
 the work and what you remember it by — and an agent's current summary follows it
@@ -186,8 +193,8 @@ invocation with `herdr plugin pane open --plugin herdr-bar --entrypoint bar
 The bar is one short-lived process in a herdr popup pane. It reads the whole
 session in a single `session.snapshot` call over herdr's Unix socket (~15ms),
 re-reads it while it is open so statuses stay live, tails the selected pane with
-`pane.read` for the preview, and calls `tab.focus` / `agent.focus` /
-`workspace.focus` when you press Enter, or `tab.close` when you confirm a
+`pane.read` for the preview, and calls `tab.focus`, `pane.focus`, `agent.focus`,
+or `workspace.focus` when you press Enter, or `tab.close` when you confirm a
 delete. Running times come from `pane.process_info` plus `ps`, one reading per
 pane on the way onto the screen and then ticked locally, because a start time
 never moves. If the socket is unavailable it falls back to the `herdr` CLI.

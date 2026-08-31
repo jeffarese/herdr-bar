@@ -205,3 +205,15 @@ class HerdrClient:
 
     def focus_agent(self, target: str) -> None:
         self.call("agent.focus", {"target": target}, ["agent", "focus", target])
+
+    def focus_pane(self, pane_id: str) -> None:
+        # The CLI's `pane focus` only moves by direction, so this call has no
+        # CLI form. Over the fallback transport the tab focus that jump() does
+        # first already lands on the right tab, which is as close as we can
+        # get, so a missing socket degrades to that instead of erroring.
+        if not self._socket_ok:
+            return
+        try:
+            self._unwrap(self._socket_call("pane.focus", {"pane_id": pane_id}))
+        except (OSError, ValueError):
+            self._socket_ok = False

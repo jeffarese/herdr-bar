@@ -3,7 +3,7 @@ import unittest
 from herdr_bar.app import Bar, jump, score_item
 from herdr_bar.client import HerdrError
 from herdr_bar.config import Config
-from herdr_bar.items import KIND_AGENT, KIND_SPACE, KIND_TAB
+from herdr_bar.items import KIND_AGENT, KIND_PANE, KIND_SPACE, KIND_TAB
 from herdr_bar.keys import Event, KeyDecoder
 from herdr_bar.mru import Recents
 from herdr_bar.theme import Theme
@@ -61,6 +61,9 @@ class FakeClient(object):
     def focus_agent(self, target):
         self.calls.append(("agent", target))
 
+    def focus_pane(self, pane_id):
+        self.calls.append(("pane", pane_id))
+
 
 def bar(recents=None, client=None, config=None):
     instance = Bar(
@@ -105,14 +108,30 @@ class ScoreItemTest(unittest.TestCase):
 
 
 class FilterTest(unittest.TestCase):
-    def test_empty_query_lists_everything(self):
+    def test_empty_query_lists_regular_items_and_named_panes(self):
         instance = bar()
-        self.assertEqual(len(instance.rows), len(instance.items))
+        self.assertEqual(len(instance.rows), len(instance.items) + len(instance.pane_items))
+        self.assertIn("server logs", titles(instance))
 
     def test_typing_filters_the_list(self):
         instance = bar()
         instance.set_query("retry")
         self.assertEqual(titles(instance)[0], "retry queue backoff")
+
+    def test_everything_search_includes_named_panes(self):
+        instance = bar()
+        instance.set_query("server logs")
+        self.assertEqual(titles(instance)[0], "server logs")
+        self.assertEqual(instance.rows[0].item.kind, KIND_PANE)
+
+    def test_named_current_pane_does_not_replace_the_current_agent_row(self):
+        snapshot = fixtures.snapshot()
+        focused = next(pane for pane in snapshot["panes"] if pane["pane_id"] == "w1:p3")
+        focused["label"] = "current editor"
+        instance = bar(client=FakeClient(snapshot))
+        keys = [row.item.key for row in instance.rows]
+        self.assertIn("w1:p3", keys)
+        self.assertIn("pane:w1:p3", keys)
 
     def test_search_reaches_the_working_directory(self):
         instance = bar()
@@ -160,6 +179,13 @@ class ScopeTest(unittest.TestCase):
         instance.insert("$")
         self.assertEqual(sorted(titles(instance)), ["logs", "server"])
 
+    def test_pane_sigil_shows_only_named_panes(self):
+        instance = bar()
+        instance.insert("%")
+        self.assertEqual(instance.scope, "pane")
+        self.assertTrue(all(row.item.kind == KIND_PANE for row in instance.rows))
+        self.assertEqual(sorted(titles(instance)), ["server logs", "web server"])
+
     def test_needs_you_sigil_shows_blocked_and_done(self):
         instance = bar()
         instance.insert("!")
@@ -182,8 +208,12 @@ class ScopeTest(unittest.TestCase):
         instance = bar()
         instance.cycle_scope(1)
         self.assertEqual(instance.scope, "agent")
+        instance.cycle_scope(1)
+        self.assertEqual(instance.scope, "pane")
+        instance.cycle_scope(1)
+        self.assertEqual(instance.scope, "tab")
         instance.cycle_scope(-1)
-        self.assertEqual(instance.scope, "all")
+        self.assertEqual(instance.scope, "pane")
 
 
 class KeyTest(unittest.TestCase):
@@ -359,6 +389,14 @@ class JumpTest(unittest.TestCase):
         item = next(item for item in instance.items if item.kind == KIND_SPACE)
         jump(client, item)
         self.assertEqual(client.calls, [("workspace", item.workspace_id)])
+
+    def test_pane_rows_focus_the_tab_and_exact_pane(self):
+        client = FakeClient()
+        instance = bar(client=client)
+        instance.insert("%")
+        item = next(item for item in instance.rows if item.item.pane_id == "w1:p7").item
+        jump(client, item)
+        self.assertEqual(client.calls, [("tab", "w1:t1"), ("pane", "w1:p7")])
 
 
 def escape(instance):

@@ -16,7 +16,7 @@ from .mru import Recents
 from .term import Terminal, detect_appearance
 from .theme import Theme, default_selection_background
 
-USAGE = """herdr-bar - jump to any Herdr tab or agent
+USAGE = """herdr-bar - jump to any Herdr tab, pane, or agent
 
 usage: run.py [options]
 

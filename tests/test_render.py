@@ -223,6 +223,12 @@ class ContentTest(unittest.TestCase):
         _, rows = draw(110, 20, "zzzqqq")
         self.assertIn("no matches", "\n".join(rows))
 
+    def test_pane_filter_shows_its_name_and_named_panes(self):
+        _, rows = draw(110, 20, scope="pane")
+        plain = strip_ansi("\n".join(rows))
+        self.assertIn("% panes", plain)
+        self.assertIn("server logs", plain)
+
     def test_counter_shows_filtered_over_total(self):
         _, rows = draw(110, 20, "week")
         self.assertRegex(rows[-1], r"\d+/\d+")
