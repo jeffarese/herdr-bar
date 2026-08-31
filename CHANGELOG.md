@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `%` filters to named panes: one row per pane you gave a name with
+  `herdr pane rename`, led by that name, and Enter focuses that exact pane.
+  Named panes also show up in Everything and its searches; unnamed panes stay
+  out of the way. (#5, thanks @silva96)
 - The top bar always names the active filter — `everything`, `@ agents`,
   `$ shells`, or `! needs you` — as a highlighted label, instead of showing a
   chip only when a filter is on. A scoped empty state names the filter that
