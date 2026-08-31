@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The top bar always names the active filter — `everything`, `@ agents`,
+  `$ shells`, or `! needs you` — as a highlighted label, instead of showing a
+  chip only when a filter is on. A scoped empty state names the filter that
+  came up empty rather than saying "this filter". (#4, thanks @silva96)
 - `ctrl+j` moves the selection down, as documented, instead of confirming the
   row: the decoder read its `0x0A` byte as Enter, so the movement binding
   never fired. Enter itself is unaffected — terminals send `0x0D` for it.
