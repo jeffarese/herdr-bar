@@ -90,6 +90,14 @@ class TranscriptTest(unittest.TestCase):
         with patch("herdr_bar.auto_title.time.monotonic", return_value=12):
             self.assertEqual(self.reader.title(SESSION, "/work/new"), "Moved project")
 
+    def test_same_inode_and_size_rewrite_is_detected(self):
+        self.write({"type": "ai-title", "aiTitle": "Old title"})
+        self.assertEqual(self.title(), "Old title")
+        identity = self.path.stat().st_ino
+        self.path.write_text(json.dumps({"type": "ai-title", "aiTitle": "New title"}) + "\n")
+        self.assertEqual(self.path.stat().st_ino, identity)
+        self.assertEqual(self.title(), "New title")
+
     def test_scan_is_bounded_and_terminal_controls_removed(self):
         self.path.write_bytes(b'x' * (MAX_SCAN + 100) + b'\n')
         self.write({"type": "ai-title", "aiTitle": "\x1b[31mFix\x1b[0m\nlogin\x07"})

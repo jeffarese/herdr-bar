@@ -52,7 +52,7 @@ class TranscriptReader:
             return ""
         state = self.sessions.setdefault(session_id, {
             "path": None, "offset": 0, "identity": None, "title": "", "opening": "",
-            "searched": float("-inf"),
+            "searched": float("-inf"), "boundary": b"",
         })
         if state["path"] is None:
             if time.monotonic() - state["searched"] < 10:
@@ -72,15 +72,24 @@ class TranscriptReader:
             with state["path"].open("rb") as handle:
                 info = os.fstat(handle.fileno())
                 identity = (info.st_dev, info.st_ino)
-                if state["identity"] != identity or info.st_size < state["offset"]:
+                # Inodes can be reused after unlink, and a transcript may be
+                # rewritten in place. Check the bytes behind our cursor too.
+                handle.seek(max(0, state["offset"] - 64))
+                boundary = handle.read(min(state["offset"], 64))
+                if (state["identity"] != identity or info.st_size < state["offset"]
+                        or boundary != state["boundary"]):
                     state.update(offset=0, title="", opening="", identity=identity)
                 start = max(state["offset"], info.st_size - MAX_SCAN)
                 handle.seek(start)
                 data = handle.read(MAX_SCAN)
+                end = data.rfind(b"\n")
+                if end >= 0:
+                    next_offset = start + end + 1
+                    handle.seek(max(0, next_offset - 64))
+                    state["boundary"] = handle.read(min(next_offset, 64))
         except OSError:
             state.update(path=None, offset=0, title="", opening="")
             return ""
-        end = data.rfind(b"\n")
         if end >= 0:
             lines = data[:end].split(b"\n")
             if start > state["offset"]:
