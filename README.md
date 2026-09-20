@@ -14,8 +14,8 @@ takes you there. Like the Slack quick switcher, for the terminal.
 - **live status, herdr's own language** — `◉` needs you, spinner working,
   `●` done, `✓` idle. Colors and glyphs mirror the herdr sidebar, and the list
   keeps updating while it is open.
-- **agents at a glance** — Claude, Codex, Kimi, Gemini, Cursor and OpenCode
-  labels each have a distinct color in mixed-agent sessions, with vendor logos
+- **agents at a glance** — Claude, Codex, Pi, Grok, Kimi, Gemini, Cursor and OpenCode
+  have recognizable marks in mixed-agent sessions, with vendor logos
   when the Herdr Agent Icons Max font is installed.
 - **named panes on demand** — `%` switches to one row per pane, led by the
   name you assigned it, and Enter focuses that exact pane.
@@ -177,7 +177,7 @@ Optional. Write `config.json` in the plugin config directory
 | `refresh_ms` | `900` | how often the open bar re-reads the session |
 | `workspaces` | `"auto"` | `true`, `false`, or `"auto"` (on with more than one workspace) |
 | `selection_background` | `"auto"` | `"auto"` asks the terminal for its background color, or set `"none"`, a hex value, or a 0-255 ANSI index |
-| `colors` | `{}` | role → `#rrggbb`, an ANSI name (`bright_blue`), or 0-255. Roles: `accent`, `match`, `text`, `muted`, `blocked`, `working`, `done`, `idle`, `unknown`, plus `agent_claude`, `agent_codex`, `agent_kimi`, `agent_gemini`, `agent_cursor`, `agent_opencode` |
+| `colors` | `{}` | role → `#rrggbb`, an ANSI name (`bright_blue`), or 0-255. Roles: `accent`, `match`, `text`, `muted`, `blocked`, `working`, `done`, `idle`, `unknown`, plus `agent_claude`, `agent_codex`, `agent_pi`, `agent_grok`, `agent_kimi`, `agent_gemini`, `agent_cursor`, `agent_opencode` |
 
 Colors default to plain ANSI, so the bar follows whatever theme your terminal
 already uses. The exception is `muted` — the second tier of text, used for

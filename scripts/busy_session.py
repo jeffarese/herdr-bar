@@ -46,18 +46,18 @@ _ROWS = [
         "/.worktrees/search",
     ),
     ("w1", 6, "logs", "", "none", None, None, ""),
-    ("w1", 7, "rate limits", "Tighten the rate limit buckets", "working", "codex", None, ""),
+    ("w1", 7, "rate limits", "Tighten the rate limit buckets", "working", "grok", None, ""),
     ("w1", 8, "api", "The invoice cache ignores the timezone", "blocked", "claude", None, "/api"),
     ("w1", 9, "tests", "", "none", None, None, ""),
     # harbor -- a second checkout, mid-review
     ("w2", 1, "retry queue", "Cap the backoff, or drop after 8?", "blocked", "codex", None, ""),
     ("w2", 2, "migrations", "alembic upgrade head", "idle", "gemini", None, ""),
-    ("w2", 3, "export", "Drain the export queue", "working", "claude", "backfill", ""),
+    ("w2", 3, "export", "Drain the export queue", "working", "kimi", "backfill", ""),
     ("w2", 4, "psql", "", "none", None, None, ""),
     ("w2", 5, "webhooks", "Rewrite the webhook dedupe", "done", "codex", None, ""),
     # lumen -- a terminal UI, hence the socket and decoder work
     ("w3", 1, "preview tail", "Tail the preview through the socket", "working", "claude", None, ""),
-    ("w3", 2, "decoder", "Chasing a flaky decoder test", "blocked", "claude", None, ""),
+    ("w3", 2, "decoder", "Chasing a flaky decoder test", "blocked", "pi", None, ""),
     ("w3", 3, "lint", "", "none", None, None, ""),
     ("w3", 4, "docs", "Document the keyboard table", "working", "gemini", None, "/docs"),
 ]

@@ -363,7 +363,7 @@ def perform(recorder: Recorder) -> None:
     recorder.say("the tab you named, what its agent is doing, how long it has run")
     recorder.hold(1.9)
 
-    recorder.say("vendor logos lead each row · less text, more room for the work")
+    recorder.say("Claude, Codex, Gemini, Pi, Grok and Kimi · one session")
     recorder.hold(1.8)
 
     recorder.say("needs-you first, then done · where you just were floats up")

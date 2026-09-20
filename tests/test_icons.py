@@ -48,7 +48,7 @@ class IconTests(unittest.TestCase):
     def test_leading_logo_replaces_vendor_label_even_on_narrow_rows(self):
         theme = Theme()
         theme.agent_icons = True
-        for agent in ("codex", "claude", "unrecognised"):
+        for agent in ("codex", "claude", "pi", "grok", "kimi", "unrecognised"):
             row = Row(Item("agent", "agent:1", "Fix search", agent=agent), ())
             for width in (24, 46, 80):
                 plain = strip_ansi(render_row(theme, row, width, False, 0, False))

@@ -204,6 +204,8 @@ AGENT_ROLES = {
     "claude": "agent_claude",
     "codex": "agent_codex",
     "kimi": "agent_kimi",
+    "pi": "agent_pi",
+    "grok": "agent_grok",
     "gemini": "agent_gemini",
     "cursor": "agent_cursor",
     "cursor-agent": "agent_cursor",

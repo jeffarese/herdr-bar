@@ -54,6 +54,8 @@ DEFAULTS = {
     "agent_claude": "#D97757",
     "agent_codex": "#10A37F",
     "agent_kimi": "#9B8AFB",
+    "agent_pi": "default",
+    "agent_grok": "default",
     "agent_gemini": "#4285F4",
     "agent_cursor": "#A78BFA",
     "agent_opencode": "#38BDF8",
