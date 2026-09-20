@@ -25,10 +25,8 @@ _SPACES = [
 
 # (workspace, tab number, label, summary, status, agent, agent name, cwd suffix)
 #
-# The label is what someone named the tab; the summary is what the agent is
-# doing in it this minute, which is what herdr keeps as the pane title. Rows
-# lead with the first and trail with the second, so the two say different
-# things here -- a fixture where they agreed would hide half the row.
+# Agent tabs model a session already using automatic titles: the tab and
+# agent summary agree, so each task appears just once in the bar.
 _ROWS = [
     # atlas -- the app being worked on
     ("w1", 1, "server", "", "none", None, None, ""),
@@ -100,6 +98,8 @@ def snapshot() -> Dict[str, Any]:
 
     labels = {space[1]: space[0] for space in _SPACES}
     for workspace_id, number, label, summary, status, agent, agent_name, suffix in _ROWS:
+        if agent and summary:
+            label = summary
         tab_id = "%s:t%d" % (workspace_id, number)
         pane_id = "%s:p%d" % (workspace_id, number)
         cwd = "%s/workspace/%s%s" % (HOME, labels[workspace_id], suffix)

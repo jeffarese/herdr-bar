@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 0.4.0
+
+- Automatically name default Claude tabs from local session transcripts when
+  the bar opens or refreshes. Preserve existing tab, pane and agent names,
+  including names set by another plugin. Set `HERDR_AUTO_TITLE_TRANSCRIPT=false`
+  to opt out; clear a tab's name to let the bar fill it again.
+- Refresh the demo with task titles shown once, leading agent logos, and
+  documentation for automatic tab naming and icon setup.
+- Lead agent rows with Claude, Codex, Pi, Grok, Kimi, Gemini, Cursor and OpenCode
+  logos when the Herdr Agent Icons Max font is installed, with colored text
+  fallbacks and optional font overrides.
+
 ## 0.3.0
 
 - `%` filters to named panes: one row per pane you gave a name with

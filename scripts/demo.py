@@ -33,7 +33,13 @@ class FakeClient(object):
     socket_ok = False
 
     def snapshot(self):
-        return snapshot()
+        state = snapshot()
+        for tab in state["tabs"]:
+            agent = next((a for a in state["agents"] if a["tab_id"] == tab["tab_id"]), None)
+            if agent:
+                title = agent.get("title") or agent.get("terminal_title_stripped")
+                tab["label"] = title
+        return state
 
     def read_pane(self, pane_id, lines, source="visible"):
         return PREVIEW_TEXT

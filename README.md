@@ -1,12 +1,20 @@
-# herdr-bar
+# herdr-bar — auto tab titles, agent icons & Cmd+K search
 
 [![ci](https://github.com/jeffarese/herdr-bar/actions/workflows/ci.yml/badge.svg)](https://github.com/jeffarese/herdr-bar/actions/workflows/ci.yml)
 
-**Cmd+K for [herdr](https://herdr.dev).** One chord opens a search field over your
-session, you type a few letters of a tab, pane, agent, repo or branch, and Enter
-takes you there. Like the Slack quick switcher, for the terminal.
+**A [Herdr](https://herdr.dev) plugin for automatic tab titles, recognizable
+agent icons, and fast session switching.** Press Cmd+K, type a few letters of a
+task, tab, pane, agent, repo or branch, and Enter takes you there. Like the Slack
+quick switcher, for the terminal.
 
-![herdr-bar: type a few letters, jump to any tab or agent](assets/demo.gif)
+![Herdr command bar with auto tab titles, Claude and Codex agent icons, and fuzzy search](assets/demo.gif)
+
+- **auto title for unnamed tabs** — reads Claude Code's local transcript to
+  replace default tab numbers with the task title. Existing tab names, named
+  panes and named agents stay yours, including names set by another plugin.
+- **recognizable agent icons** — Claude, Codex, Pi, Grok, Kimi, Gemini, Cursor
+  and OpenCode have distinct marks and colors. With the Herdr Agent Icons Max
+  font installed, vendor logos lead each agent row, as shown in the demo.
 
 - **fuzzy search over everything you can jump to** — agents, plain tabs, and
   workspaces, matched on title, working directory, agent name and kind, branch,
@@ -14,9 +22,6 @@ takes you there. Like the Slack quick switcher, for the terminal.
 - **live status, herdr's own language** — `◉` needs you, spinner working,
   `●` done, `✓` idle. Colors and glyphs mirror the herdr sidebar, and the list
   keeps updating while it is open.
-- **agents at a glance** — Claude, Codex, Pi, Grok, Kimi, Gemini, Cursor and OpenCode
-  have recognizable marks in mixed-agent sessions, with vendor logos
-  when the Herdr Agent Icons Max font is installed.
 - **named panes on demand** — `%` switches to one row per pane, led by the
   name you assigned it, and Enter focuses that exact pane.
 - **opens on what matters** — blocked and finished agents float to the top,
@@ -53,6 +58,54 @@ Reload with `herdr server reload-config`, then press `ctrl+b k`.
 Requires herdr 0.7.4+ (the release that added popup plugin panes), Python 3.9+
 on PATH, and macOS or Linux. Herdr refuses to install the plugin on anything
 older, so there is nothing to get wrong.
+
+## Auto title: automatic tab naming
+
+Open the bar and unnamed Claude Code tabs pick up their session's title from
+the local transcript. A tab such as `3` becomes `Repair OAuth callbacks` — just
+the task, without a repeated agent name, folder or tab-number prefix. If Claude
+has not generated a title yet, the first human prompt or slash command provides
+the name. Matching tab titles and agent summaries appear only once in the list.
+
+Automatic tab renaming runs when the bar opens and while it refreshes. It uses
+the transcript-reading idea from
+[herdr-auto-title](https://github.com/kryptamine/herdr-auto-title), without
+starting a background service or making an extra AI request.
+
+- **Your names win.** Only empty names and default position numbers qualify.
+  A custom tab title, pane label or agent name prevents automatic renaming,
+  including on the very first launch. Names are checked again before writing.
+- **Name once, keep it.** Once filled, a tab title stays put across refreshes
+  and reopening the bar. Clear its name to let automatic naming fill it again.
+  Tabs containing multiple agents are left alone to avoid choosing the wrong task.
+- **Local Claude transcripts only.** Requires Herdr's Claude integration to
+  report the session ID and a readable transcript under `CLAUDE_CONFIG_DIR`
+  (default `~/.claude`). Missing transcripts and other agent types leave names
+  unchanged. Icons and search support all the agents listed above.
+- **Enabled by default.** Set `HERDR_AUTO_TITLE_TRANSCRIPT=false` in the
+  environment inherited by the popup to disable transcript reading and renaming.
+  The standalone Auto Title plugin's `config.env` is not read by this plugin.
+
+Herdr exposes the current name rather than its author: a manual name equal to
+the tab's default position number is indistinguishable from an unnamed tab.
+It also has no conditional rename API, so a rename made in the brief interval
+between the final check and the write cannot be detected.
+
+## Agent icons at a glance
+
+Logos sit before the status and task title, making a mixed Claude, Codex, Gemini,
+Pi, Grok or Kimi session easy to scan. Custom agent names remain visible; the
+vendor label is omitted when its logo already identifies it.
+
+The logos use the **Herdr Agent Icons Max** font from
+[herdr-radar](https://github.com/hhdebb/herdr-radar). If Radar already shows
+logos, you are ready. Otherwise follow Radar's font setup and reload your
+terminal configuration. The bar detects the font locally and falls back to
+colored text labels when it is unavailable. It never installs fonts for you.
+
+Set `"agent_icons": "font"` to force logos (for example over SSH when the font
+is installed on your local terminal), or `"agent_icons": "none"` for text only.
+The demo uses the icon font and tabs already named for their tasks.
 
 ## Making it a real Cmd+K
 
@@ -186,15 +239,9 @@ terminal's own background (lighter on a dark theme, darker on a light one) so it
 stays readable; agent labels use their agent role, and `unknown` is the dimmer
 tier below it for separators and rules.
 
-Agent logos reuse [herdr-radar's icon font](https://github.com/hhdebb/herdr-radar).
-If Radar already renders logos in your terminal, no additional setup is needed.
-Otherwise follow its font setup instructions and reload your terminal config.
-Font detection is local and cannot verify a terminal's active font mapping;
-if you see boxes, check the mapping or set `"agent_icons": "none"`.
-Unknown agents keep their text label. The bar never installs fonts or edits
-terminal settings, and remains Python standard-library only.
-When available, the logo leads the row before its status and title, replacing
-the vendor label in the metadata. Custom agent names remain visible.
+See [Agent icons at a glance](#agent-icons-at-a-glance) for font setup.
+Detection cannot verify your terminal's active font mapping; if you see boxes,
+check the mapping or set `"agent_icons": "none"`. Unknown agents keep text labels.
 
 Popup size lives in herdr, not here. Override the manifest's `74%` × `62%` per
 invocation with `herdr plugin pane open --plugin herdr-bar --entrypoint bar
@@ -210,8 +257,12 @@ or `workspace.focus` when you press Enter, or `tab.close` when you confirm a
 delete. Running times come from `pane.process_info` plus `ps`, one reading per
 pane on the way onto the screen and then ticked locally, because a start time
 never moves. If the socket is unavailable it falls back to the `herdr` CLI.
-Nothing runs in the background, and the only state it keeps is a list of
-recently visited rows under `HERDR_PLUGIN_STATE_DIR`.
+Eligible unnamed Claude tabs are filled through `tab.rename`, after a bounded
+read of their local transcript and a fresh name check. `--list` and `--doctor`
+remain read-only. Nothing runs in the background; transcript offsets are cached
+only while the popup is open, and the only local persistent state is a list of
+recently visited rows under `HERDR_PLUGIN_STATE_DIR`. Renamed titles are stored
+by Herdr itself.
 
 ## Development
 
@@ -220,7 +271,7 @@ git clone https://github.com/jeffarese/herdr-bar
 cd herdr-bar
 herdr plugin link .
 
-PYTHONPATH=src python3 -m unittest discover -s tests -t .   # 300, no deps
+PYTHONPATH=src python3 -m unittest discover -s tests -t .   # no deps
 python3 run.py --doctor                         # environment diagnostics
 python3 run.py --list                           # the rows, as JSON
 python3 scripts/demo.py                         # run against fixture data

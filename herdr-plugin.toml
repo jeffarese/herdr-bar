@@ -1,10 +1,10 @@
 id = "herdr-bar"
 name = "Bar"
-version = "0.3.0"
+version = "0.4.0"
 # 0.7.4 is the first release with session-modal popup plugin panes;
 # session.snapshot (the whole model in one call) landed in 0.7.2.
 min_herdr_version = "0.7.4"
-description = "Cmd+K command bar: fuzzy-jump to any tab, pane, or agent"
+description = "Cmd+K command bar with auto title: automatic tab titles, agent icons, and fuzzy search"
 platforms = ["linux", "macos"]
 
 # Opening the bar is a one-liner through the Herdr CLI, so the action stays a

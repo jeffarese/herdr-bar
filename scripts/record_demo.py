@@ -360,7 +360,7 @@ def perform(recorder: Recorder) -> None:
     recorder.say("one chord, and the whole session is a list")
     recorder.hold(1.3)
 
-    recorder.say("the tab you named, what its agent is doing, how long it has run")
+    recorder.say("automatic tab titles · the task once, plus its running time")
     recorder.hold(1.9)
 
     recorder.say("Claude, Codex, Gemini, Pi, Grok and Kimi · one session")
@@ -382,14 +382,14 @@ def perform(recorder: Recorder) -> None:
     recorder.type("invo", 0.16)
     recorder.hold(2.2)
 
-    recorder.say("wherever it landed · the tab name here, the summary there")
+    recorder.say("search the task title and its project · both stay searchable")
     recorder.key("ctrl+u", 0.22)
     recorder.type("cache api", 0.15)
     recorder.hold(2.2)
 
     recorder.say("terms match independently · title, repo, branch, agent")
     recorder.key("ctrl+u", 0.22)
-    recorder.type("ret q", 0.15)
+    recorder.type("back harbor", 0.15)
     recorder.hold(2.0)
 
     recorder.say("nothing matching says so, and tells you the way out")
