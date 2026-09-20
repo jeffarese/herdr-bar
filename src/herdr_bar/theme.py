@@ -107,6 +107,7 @@ class Theme(object):
             merged["muted"] = muted
         merged.update({k: v for k, v in (overrides or {}).items() if isinstance(v, str)})
         self._fg: Dict[str, str] = {}
+        self.agent_icons = False
         for role, spec in merged.items():
             params = _parse(spec)
             self._fg[role] = "" if params is None else "\x1b[38;%sm" % params

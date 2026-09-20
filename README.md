@@ -15,7 +15,8 @@ takes you there. Like the Slack quick switcher, for the terminal.
   `●` done, `✓` idle. Colors and glyphs mirror the herdr sidebar, and the list
   keeps updating while it is open.
 - **agents at a glance** — Claude, Codex, Kimi, Gemini, Cursor and OpenCode
-  labels each have a distinct color in mixed-agent sessions.
+  labels each have a distinct color in mixed-agent sessions, with vendor logos
+  when the Herdr Agent Icons Max font is installed.
 - **named panes on demand** — `%` switches to one row per pane, led by the
   name you assigned it, and Enter focuses that exact pane.
 - **opens on what matters** — blocked and finished agents float to the top,
@@ -172,6 +173,7 @@ Optional. Write `config.json` in the plugin config directory
 | `preview` | `"auto"` | `true`, `false` (hidden until `ctrl+o`), or `"auto"` (on when the popup is wide enough) |
 | `mouse` | `true` | click and wheel support |
 | `spinner` | `true` | animate the working glyph |
+| `agent_icons` | `"auto"` | Detect the local Herdr Agent Icons Max font; `"font"` forces logos (useful over SSH); `"none"` keeps text labels only |
 | `refresh_ms` | `900` | how often the open bar re-reads the session |
 | `workspaces` | `"auto"` | `true`, `false`, or `"auto"` (on with more than one workspace) |
 | `selection_background` | `"auto"` | `"auto"` asks the terminal for its background color, or set `"none"`, a hex value, or a 0-255 ANSI index |
@@ -183,6 +185,16 @@ summaries and running times — which is a gray picked from the
 terminal's own background (lighter on a dark theme, darker on a light one) so it
 stays readable; agent labels use their agent role, and `unknown` is the dimmer
 tier below it for separators and rules.
+
+Agent logos reuse [herdr-radar's icon font](https://github.com/hhdebb/herdr-radar).
+If Radar already renders logos in your terminal, no additional setup is needed.
+Otherwise follow its font setup instructions and reload your terminal config.
+Font detection is local and cannot verify a terminal's active font mapping;
+if you see boxes, check the mapping or set `"agent_icons": "none"`.
+Unknown agents keep their text label. The bar never installs fonts or edits
+terminal settings, and remains Python standard-library only.
+When available, the logo leads the row before its status and title, replacing
+the vendor label in the metadata. Custom agent names remain visible.
 
 Popup size lives in herdr, not here. Override the manifest's `74%` × `62%` per
 invocation with `herdr plugin pane open --plugin herdr-bar --entrypoint bar

@@ -147,6 +147,20 @@ def _status_of(record: Dict[str, Any]) -> str:
     return status
 
 
+def _summary_repeats_title(summary: str, title: str, cwd: str, workspace: str) -> bool:
+    """Ignore the terminal title's project suffix when it adds only context."""
+    def normalize(text: str) -> str:
+        return " ".join(text.split()).casefold()
+
+    if normalize(summary) == normalize(title):
+        return True
+    head, separator, suffix = summary.rpartition(" | ")
+    contexts = {normalize(os.path.basename(cwd.rstrip("/"))), normalize(workspace)} - {""}
+    return bool(
+        separator and normalize(head) == normalize(title) and normalize(suffix) in contexts
+    )
+
+
 def build_items(snapshot: Dict[str, Any]) -> List[Item]:
     workspaces: List[Dict[str, Any]] = list(snapshot.get("workspaces") or [])
     tabs: List[Dict[str, Any]] = list(snapshot.get("tabs") or [])
@@ -229,7 +243,7 @@ def build_items(snapshot: Dict[str, Any]) -> List[Item]:
             # the summary trails it. When there is no tab name the summary is
             # all we have, so it becomes the title on its own.
             title = _first(tab_label, summary, os.path.basename(cwd), "agent")
-            detail = summary if summary.lower() != title.lower() else ""
+            detail = "" if _summary_repeats_title(summary, title, cwd, workspace_label) else summary
             agent_kind = _first(agent.get("display_agent"), agent.get("agent"))
             agent_name = _first(agent.get("name"))
             items.append(

@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from . import render
+from . import icons, render
 from .client import HerdrClient, HerdrError
 from .config import Config
 from .fuzzy import match, split_query
@@ -102,6 +102,7 @@ class Bar(object):
         self.config = config
         self.recents = recents
         self.theme = theme
+        self.theme.agent_icons = icons.enabled(config.agent_icons)
 
         self.items: List[Item] = []
         self.pane_items: List[Item] = []

@@ -434,7 +434,7 @@ class virtual_clock(object):
 def build_bar(client: CountingClient, preview: Any = "auto") -> Bar:
     bar = Bar(
         client,
-        Config({"selection_background": "237", "preview": preview}),
+        Config({"selection_background": "237", "preview": preview, "agent_icons": "none"}),
         Recents(None),
         Theme(selection_background="237"),
     )

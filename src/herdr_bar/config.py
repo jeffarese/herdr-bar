@@ -17,6 +17,7 @@ DEFAULTS: Dict[str, Any] = {
     "preview": "auto",
     "mouse": True,
     "spinner": True,
+    "agent_icons": "auto",  # "auto" | "font" | "none"
     "refresh_ms": 900,
     "workspaces": "auto",  # true | false | "auto" (on with more than one space)
     "colors": {},  # role -> "#rrggbb" | ansi name | 0-255
@@ -31,6 +32,7 @@ class Config(object):
         self.preview = merged.get("preview", "auto")
         self.mouse = bool(merged.get("mouse", True))
         self.spinner = bool(merged.get("spinner", True))
+        self.agent_icons = merged.get("agent_icons", "auto")
         try:
             self.refresh_ms = max(200, int(merged.get("refresh_ms", 900)))
         except (TypeError, ValueError):

@@ -36,6 +36,7 @@ import busy_session  # noqa: E402
 from herdr_bar import app as app_module  # noqa: E402
 from herdr_bar.app import SPINNER_INTERVAL, Bar  # noqa: E402
 from herdr_bar.config import Config  # noqa: E402
+from herdr_bar.icons import LOGOS  # noqa: E402
 from herdr_bar.keys import KEY, TEXT, Event  # noqa: E402
 from herdr_bar.mru import Recents  # noqa: E402
 from herdr_bar.textutil import char_width  # noqa: E402
@@ -251,7 +252,7 @@ class Recorder(object):
 
         self.bar = Bar(
             self.client,
-            Config({"selection_background": "237"}),
+            Config({"selection_background": "237", "agent_icons": "font"}),
             recents,
             Theme(selection_background="237"),
         )
@@ -362,7 +363,7 @@ def perform(recorder: Recorder) -> None:
     recorder.say("the tab you named, what its agent is doing, how long it has run")
     recorder.hold(1.9)
 
-    recorder.say("Claude, Codex and Gemini each carry their own color")
+    recorder.say("vendor logos lead each row · less text, more room for the work")
     recorder.hold(1.8)
 
     recorder.say("needs-you first, then done · where you just were floats up")
@@ -582,6 +583,17 @@ def ui_font(size: int, bold: bool = False):
     raise SystemExit("no UI font found")
 
 
+def icon_font():
+    from pathlib import Path
+
+    from PIL import ImageFont
+
+    for directory in FONT_DIRS:
+        for path in sorted(Path(directory).glob("HerdrAgentIconsMax*.ttf")):
+            return ImageFont.truetype(str(path), FONT_SIZE)
+    raise SystemExit("install herdr-radar's Herdr Agent Icons Max font to record vendor logos")
+
+
 _COVERAGE: Dict[Tuple[int, str], bool] = {}
 
 
@@ -635,6 +647,7 @@ class Painter(object):
     def __init__(self, compact: bool = False) -> None:
         self.font = find_font(False)
         self.font_bold = find_font(True)
+        self.icon_font = icon_font()
         self.caption_font = ui_font(CAPTION_SIZE)
         self.chip_font = ui_font(CHIP_SIZE, bold=True)
         # The keycaps in the captions are terminal glyphs; the UI font has no
@@ -711,6 +724,17 @@ class Painter(object):
                         fill=cell.fg,
                     )
                 if cell.char in ("", " "):
+                    continue
+                if cell.char in LOGOS.values():
+                    # Center the actual ink in one terminal cell, independent
+                    # of the icon font's different ascent and advance width.
+                    box = self.icon_font.getbbox(cell.char)
+                    x = origin_x + column * self.cell_w
+                    draw.text(
+                        (x + (self.cell_w - box[2] + box[0]) / 2 - box[0],
+                         y + (self.cell_h - box[3] + box[1]) / 2 - box[1]),
+                        cell.char, font=self.icon_font, fill=cell.fg,
+                    )
                     continue
                 draw.text(
                     (origin_x + column * self.cell_w, y + self.baseline),

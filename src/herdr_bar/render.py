@@ -17,6 +17,7 @@ import os
 from typing import Dict, List, Mapping, NamedTuple, Optional, Sequence, Tuple
 
 from .age import format_age
+from .icons import logo_for
 from .items import KIND_PANE, KIND_SPACE, Item
 from .textutil import display_width, pad, truncate, truncate_middle, window_positions
 from .theme import BOLD, RESET, UNDERLINE, Theme
@@ -244,6 +245,11 @@ def render_row(
     marker = Segment("accent", SELECTED_BAR + " ") if selected else Segment("", "  ")
     glyph_role = item.status if item.status in ("blocked", "working", "done", "idle") else "unknown"
     glyph = Segment(glyph_role, theme.status_glyph(item.status, tick) + " ")
+    logo = logo_for(item.agent) if theme.agent_icons else ""
+    leading = [marker]
+    if logo:
+        leading.append(Segment(_agent_role(item.agent), logo + " "))
+    leading.append(glyph)
 
     meta: List[List[Segment]] = []
     context, context_start = _context_label(item)
@@ -260,7 +266,7 @@ def render_row(
     if context and not _duplicates_primary_text(item, context):
         marks = _field_marks(row, item.subtitle, -context_start)
         meta.append(_chunk(theme, "muted", context, marks))
-    if item.agent:
+    if item.agent and (item.agent_name or not logo):
         if item.agent_name:
             label = "@" + item.agent_name
             marks = _field_marks(row, item.agent_name, 1)
@@ -282,7 +288,7 @@ def render_row(
     elif item.kind == KIND_PANE:
         meta.append(_chunk(theme, "muted", "pane", _field_marks(row, "pane")))
 
-    fixed = _plain_width([marker, glyph])
+    fixed = _plain_width(leading)
     available = max(0, width - fixed)
 
     # Titles win: drop meta chunks from the front (least specific first) until
@@ -311,7 +317,7 @@ def render_row(
             title_segments.extend(_highlight(theme, detail_text, detail_marks, "muted", False))
             used = _plain_width(title_segments)
     gap = max(1, available - used - meta_width) if meta_width else available - used
-    segments = [marker, glyph] + title_segments
+    segments = leading + title_segments
     if meta_width:
         segments.append(Segment("", " " * gap))
         segments.extend(_join_meta(meta))

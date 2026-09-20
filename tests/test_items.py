@@ -66,6 +66,26 @@ class BuildItemsTest(unittest.TestCase):
         self.assertEqual(len(focused), 1)
         self.assertEqual(focused[0].pane_id, "w1:p3")
 
+    def test_project_suffix_does_not_repeat_title(self):
+        snapshot = {
+            "workspaces": [{"workspace_id": "w1", "label": "Tools"}],
+            "tabs": [{"tab_id": "t1", "workspace_id": "w1", "label": "Fix search"}],
+            "panes": [{"pane_id": "p1", "tab_id": "t1", "cwd": "/work/herdr-bar/"}],
+            "agents": [{"pane_id": "p1", "tab_id": "t1", "agent": "codex"}],
+        }
+        for summary, expected in (
+            ("Fix search | herdr-bar", ""),
+            ("FIX  SEARCH | Tools", ""),
+            ("Fix search | investigate indexing", "Fix search | investigate indexing"),
+            ("Fix search results | herdr-bar", "Fix search results | herdr-bar"),
+            ("Investigate indexing | herdr-bar", "Investigate indexing | herdr-bar"),
+        ):
+            with self.subTest(summary=summary):
+                snapshot["panes"][0]["title"] = summary
+                item = next(i for i in build_items(snapshot) if i.kind == KIND_AGENT)
+                self.assertEqual(item.detail, expected)
+                self.assertEqual(item.title, "Fix search")
+
     def test_named_agents_keep_their_name(self):
         named = next(item for item in self.items if item.agent_name)
         self.assertEqual(named.agent_name, "battery")
