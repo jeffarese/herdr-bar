@@ -126,12 +126,51 @@ class AutoTitlesTest(unittest.TestCase):
         self.assertEqual(result["tabs"][0]["label"], "Repair login")
         self.assertEqual(self.client.calls, [("rename", "w1:t9", "Repair login")])
 
-    def test_names_survive_refresh_reopen_and_transcript_changes(self):
+    def test_owned_names_follow_transcript_changes(self):
         self.apply()
         self.title.return_value = "New task"
         self.apply()
         with patch.object(TranscriptReader, "title", return_value="New task"):
             AutoTitles().apply(self.client, self.client.snapshot())
+        self.assertEqual(len(self.client.calls), 2)
+        self.assertEqual(self.client.calls[-1][-1], "New task")
+
+    def test_codex_title_updates_without_transcripts_and_ignores_folder(self):
+        agent = self.client._snapshot["agents"][0]
+        agent["agent"] = agent["agent_session"]["agent"] = "codex"
+        agent["terminal_title_stripped"] = "app"
+        self.apply()
+        self.assertEqual(self.client.calls, [])
+        agent["terminal_title_stripped"] = "Repair login | app"
+        self.apply()
+        self.apply()
+        self.assertEqual(len(self.client.calls), 1)
+        agent["terminal_title_stripped"] = "Repair OAuth | app"
+        self.apply()
+        self.assertEqual(self.client.calls[-1][-1], "Repair OAuth")
+        self.title.assert_not_called()
+
+    def test_ownership_survives_restart_and_manual_rename_relinquishes_it(self):
+        with tempfile.TemporaryDirectory() as root:
+            with patch.dict(os.environ, {"HERDR_PLUGIN_STATE_DIR": root}):
+                self.titles = AutoTitles()
+                with patch.object(TranscriptReader, "title", return_value="Initial task"):
+                    self.apply()
+                self.titles = AutoTitles()
+                with patch.object(TranscriptReader, "title", return_value="Better task"):
+                    self.apply()
+                    self.assertEqual(self.client.calls[-1][-1], "Better task")
+                    self.client._snapshot["tabs"][0]["label"] = "My choice"
+                    self.apply()
+                    self.assertEqual(self.titles.owned, {})
+                    self.assertEqual(self.client._snapshot["tabs"][0]["label"], "My choice")
+
+    def test_replacement_session_cannot_claim_a_previously_owned_name(self):
+        self.apply()
+        self.client._snapshot["agents"][0]["agent_session"]["value"] = (
+            "aaaaaaaa-1234-1234-1234-123456789abc")
+        self.title.return_value = "Different session"
+        self.apply()
         self.assertEqual(len(self.client.calls), 1)
 
     def test_existing_custom_names_are_preserved_on_first_open(self):
@@ -210,7 +249,7 @@ class AutoTitlesTest(unittest.TestCase):
             read.assert_not_called()
         self.assertEqual(self.client.calls, [])
 
-    def test_bootstrap_and_refresh_use_real_transcript(self):
+    def test_popup_only_reads_titles_written_by_watcher(self):
         with tempfile.TemporaryDirectory() as root:
             projects = Path(root) / "projects" / "-work-app"
             projects.mkdir(parents=True)
@@ -219,7 +258,55 @@ class AutoTitlesTest(unittest.TestCase):
             with patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": root}):
                 bar = Bar(self.client, Config(), Recents(None), Theme())
                 bar.bootstrap()
+                self.assertEqual(self.client.calls, [])
+                titles = AutoTitles()
+                titles.apply(self.client, self.client.snapshot())
+                bar.refresh()
                 self.assertEqual(bar.items[0].title, "Repair login")
                 self.client._snapshot["tabs"][0]["label"] = "My choice"
                 bar.refresh()
                 self.assertEqual(bar.items[0].title, "My choice")
+
+
+class NamingPersistenceTest(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.env = patch.dict(os.environ, {"HERDR_PLUGIN_STATE_DIR": self.temp.name,
+                                          "HERDR_SOCKET_PATH": "/test/server.sock"})
+        self.env.start()
+        self.addCleanup(self.env.stop)
+        self.titles = AutoTitles()
+        self.client = FakeClient(snapshot())
+        agent = self.client._snapshot["agents"][0]
+        agent["agent"] = agent["agent_session"]["agent"] = "codex"
+        agent["terminal_title_stripped"] = "Task title | app"
+
+    def test_busy_lock_returns_without_server_requests_or_mutation(self):
+        import fcntl
+        self.titles.state_dir.mkdir(parents=True)
+        with (self.titles.state_dir / "auto-titles.lock").open("a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            with patch.object(self.client, "snapshot") as read:
+                self.titles.apply(self.client, self.client._snapshot)
+                read.assert_not_called()
+        self.assertEqual(self.client.calls, [])
+
+    def test_idle_tick_uses_supplied_snapshot_and_does_not_write_state(self):
+        self.titles.apply(self.client, self.client.snapshot())
+        path = self.titles.state_dir / "auto-titles.json"
+        before = path.stat().st_mtime_ns
+        with patch.object(self.client, "snapshot") as read:
+            self.titles.apply(self.client, copy.deepcopy(self.client._snapshot))
+            read.assert_not_called()
+        self.assertEqual(path.stat().st_mtime_ns, before)
+        self.assertEqual(len(self.client.calls), 1)
+
+    def test_state_directory_and_write_errors_skip_rename_and_recover(self):
+        with patch.object(Path, "mkdir", side_effect=PermissionError):
+            self.titles.apply(self.client, self.client.snapshot())
+        with patch.object(Path, "write_text", side_effect=OSError("disk full")):
+            self.titles.apply(self.client, self.client.snapshot())
+        self.assertEqual(self.client.calls, [])
+        self.titles.apply(self.client, self.client.snapshot())
+        self.assertEqual(self.client.calls[-1][-1], "Task title")

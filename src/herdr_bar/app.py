@@ -6,7 +6,6 @@ import time
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from . import icons, render
-from .auto_title import AutoTitles
 from .client import HerdrClient, HerdrError
 from .config import Config
 from .fuzzy import match, split_query
@@ -100,7 +99,6 @@ def score_item(
 class Bar(object):
     def __init__(self, client: HerdrClient, config: Config, recents: Recents, theme: Theme) -> None:
         self.client = client
-        self.auto_titles = AutoTitles()
         self.config = config
         self.recents = recents
         self.theme = theme
@@ -143,7 +141,7 @@ class Bar(object):
 
     def bootstrap(self) -> None:
         """First load, outside the alt screen, so failures can be reported."""
-        self._apply(self.auto_titles.apply(self.client, self.client.snapshot()))
+        self._apply(self.client.snapshot())
 
     def refresh(self, force: bool = False) -> None:
         try:
@@ -152,7 +150,7 @@ class Bar(object):
             self.flash(str(error))
             self._last_refresh = time.monotonic()
             return
-        self._apply(self.auto_titles.apply(self.client, snapshot), force=force)
+        self._apply(snapshot, force=force)
 
     def _apply(self, snapshot: Dict[str, object], force: bool = False) -> None:
         keep = self.selected_item().key if self.rows else None

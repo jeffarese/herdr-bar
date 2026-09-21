@@ -49,12 +49,14 @@ class HerdrClient:
         socket_path: Optional[str] = None,
         bin_path: Optional[str] = None,
         timeout: float = 4.0,
+        socket_only: bool = False,
     ) -> None:
         if socket_path is None:
             socket_path = _env_path("HERDR_SOCKET_PATH")
         self.socket_path = socket_path
         self.bin_path = bin_path or _resolve_bin()
         self.timeout = timeout
+        self.socket_only = socket_only
         self._socket_ok = self._socket_usable()
 
     @property
@@ -131,6 +133,13 @@ class HerdrClient:
 
     def call(self, method: str, params: Dict[str, Any], cli_args: List[str]) -> Dict[str, Any]:
         """Run a request over the socket, falling back to the CLI."""
+        if self.socket_only:
+            if not self.socket_path:
+                raise HerdrError("background naming requires HERDR_SOCKET_PATH")
+            try:
+                return self._unwrap(self._socket_call(method, params))
+            except (OSError, ValueError) as error:
+                raise HerdrError(str(error)) from error
         if self._socket_ok:
             try:
                 return self._unwrap(self._socket_call(method, params))

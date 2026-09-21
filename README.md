@@ -9,7 +9,7 @@ quick switcher, for the terminal.
 
 ![Herdr command bar with auto tab titles, Claude and Codex agent icons, and fuzzy search](assets/demo.gif)
 
-- **auto title for unnamed tabs** — reads Claude Code's local transcript to
+- **auto title for unnamed tabs** — follows Claude and Codex task titles to
   replace default tab numbers with the task title. Existing tab names, named
   panes and named agents stay yours, including names set by another plugin.
 - **recognizable agent icons** — Claude, Codex, Pi, Grok, Kimi, Gemini, Cursor
@@ -34,7 +34,7 @@ quick switcher, for the terminal.
 - **closes tabs** — `⌦` on a row closes its tab once you confirm, so the
   session you are looking at is the session you can tidy.
 - **no dependencies** — Python 3 standard library only. No build step, no
-  runtime to install, no daemon.
+  runtime to install. A small title watcher runs in the background.
 
 ## Install
 
@@ -55,36 +55,39 @@ description = "command bar"
 
 Reload with `herdr server reload-config`, then press `ctrl+b k`.
 
-Requires herdr 0.7.4+ (the release that added popup plugin panes), Python 3.9+
+Requires herdr 0.9.0+ (startup hooks and agent session metadata), Python 3.9+
 on PATH, and macOS or Linux. Herdr refuses to install the plugin on anything
 older, so there is nothing to get wrong.
 
 ## Auto title: automatic tab naming
 
-Open the bar and unnamed Claude Code tabs pick up their session's title from
-the local transcript. A tab such as `3` becomes `Repair OAuth callbacks` — just
-the task, without a repeated agent name, folder or tab-number prefix. If Claude
-has not generated a title yet, the first human prompt or slash command provides
-the name. Matching tab titles and agent summaries appear only once in the list.
+Unnamed Claude and Codex tabs pick up their agent's task title automatically,
+even while the bar is closed. The watcher checks every two seconds and follows
+later task-title changes. Codex's trailing ` | folder` is removed; a bare folder
+or agent name is ignored until a task title is available. Claude's local
+transcript supplies its generated title or first human prompt when Herdr has no
+useful terminal title yet. No extra model requests are made.
 
-Automatic tab renaming runs when the bar opens and while it refreshes. It uses
-the transcript-reading idea from
-[herdr-auto-title](https://github.com/kryptamine/herdr-auto-title), without
-starting a background service or making an extra AI request.
-
-- **Your names win.** Only empty names and default position numbers qualify.
-  A custom tab title, pane label or agent name prevents automatic renaming,
-  including on the very first launch. Names are checked again before writing.
-- **Name once, keep it.** Once filled, a tab title stays put across refreshes
-  and reopening the bar. Clear its name to let automatic naming fill it again.
-  Tabs containing multiple agents are left alone to avoid choosing the wrong task.
-- **Local Claude transcripts only.** Requires Herdr's Claude integration to
-  report the session ID and a readable transcript under `CLAUDE_CONFIG_DIR`
-  (default `~/.claude`). Missing transcripts and other agent types leave names
-  unchanged. Icons and search support all the agents listed above.
-- **Enabled by default.** Set `HERDR_AUTO_TITLE_TRANSCRIPT=false` in the
-  environment inherited by the popup to disable transcript reading and renaming.
-  The standalone Auto Title plugin's `config.env` is not read by this plugin.
+- **Your names win.** Existing custom tab names, pane labels and agent names
+  are preserved. Only default names and names recorded as written by this
+  plugin are updated. Manually changing a name opts that tab out; clearing it
+  opts back in. Tabs with multiple agents are left alone.
+- **Updates survive reopening.** Ownership is saved in the plugin state
+  directory, tied to the agent session and terminal. Old custom names are not
+  adopted just because they match a suggested title.
+- **Runs automatically.** Herdr's startup and agent-detection hooks start a
+  single background watcher per server. Opening the bar also ensures it is running. After
+  linking or enabling the plugin in an already running server, start it with
+  `herdr plugin action invoke herdr-bar.start-titles`.
+- **Stop or resume.** `herdr plugin action invoke herdr-bar.stop-titles` stops
+  naming for this server; event hooks and popup opens leave it stopped until
+  you invoke `herdr-bar.start-titles` again. Disabling or uninstalling the
+  plugin stops its connected watchers within ten seconds.
+- **Local sources.** Requires Herdr to report the Claude or Codex session ID.
+  Claude transcript fallback uses `CLAUDE_CONFIG_DIR` (default `~/.claude`).
+  Set `HERDR_AUTO_TITLE_TRANSCRIPT=false` in Herdr's environment before starting
+  it to disable automatic naming. The standalone Auto Title plugin's
+  `config.env` is not read.
 
 Herdr exposes the current name rather than its author: a manual name equal to
 the tab's default position number is indistinguishable from an unnamed tab.
@@ -93,7 +96,8 @@ between the final check and the write cannot be detected.
 
 ## Agent icons at a glance
 
-Logos sit before the status and task title, making a mixed Claude, Codex, Gemini,
+Logos sit before the evenly spaced status and task title. Working titles use
+the orange `working` color (configurable), making a mixed Claude, Codex, Gemini,
 Pi, Grok or Kimi session easy to scan. Custom agent names remain visible; the
 vendor label is omitted when its logo already identifies it.
 
@@ -257,12 +261,20 @@ or `workspace.focus` when you press Enter, or `tab.close` when you confirm a
 delete. Running times come from `pane.process_info` plus `ps`, one reading per
 pane on the way onto the screen and then ticked locally, because a start time
 never moves. If the socket is unavailable it falls back to the `herdr` CLI.
-Eligible unnamed Claude tabs are filled through `tab.rename`, after a bounded
-read of their local transcript and a fresh name check. `--list` and `--doctor`
-remain read-only. Nothing runs in the background; transcript offsets are cached
-only while the popup is open, and the only local persistent state is a list of
-recently visited rows under `HERDR_PLUGIN_STATE_DIR`. Renamed titles are stored
-by Herdr itself.
+Eligible Claude and Codex tabs are updated through `tab.rename`, with a fresh
+name and session check before each write. Claude transcript fallback uses a
+bounded local read. `--list` and `--doctor` remain read-only. A singleton
+background watcher checks titles every two seconds; popup refreshes only read
+Herdr's snapshot. Each idle tick makes one snapshot request. Plugin registration
+is checked through `plugin.list` every ten seconds, without assuming any registry
+file location. Automatic-name ownership and watcher locks are isolated by socket
+path under `HERDR_PLUGIN_STATE_DIR/title-servers/`; recent rows remain shared.
+The watcher uses only the injected socket, reconnects with backoff up to thirty
+seconds during server downtime, and remains asleep between attempts. It never
+starts a server or falls back to a different session. An explicit stop still
+works while offline. Plugin replacement reloads the registered code while
+retaining the singleton lock. Diagnostics are written to `title-watcher.log`
+in the server's state subdirectory. Tab titles themselves are stored by Herdr.
 
 ## Development
 

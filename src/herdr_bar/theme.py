@@ -44,7 +44,7 @@ DEFAULTS = {
     "text": "default",
     "muted": "244",
     "blocked": "bright_red",
-    "working": "bright_yellow",
+    "working": "#c78a1f",
     "done": "bright_cyan",
     "idle": "bright_green",
     "unknown": "bright_black",

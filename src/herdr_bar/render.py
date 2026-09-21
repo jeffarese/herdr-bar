@@ -250,7 +250,9 @@ def render_row(
     logo = logo_for(item.agent) if theme.agent_icons else ""
     leading = [marker]
     if logo:
-        leading.append(Segment(_agent_role(item.agent), logo + " "))
+        # The icon font extends into the next cell; reserve that cell and
+        # one clear space so the status has the same visible gap on both sides.
+        leading.append(Segment(_agent_role(item.agent), logo + "  "))
     leading.append(glyph)
 
     meta: List[List[Segment]] = []
@@ -304,7 +306,8 @@ def render_row(
     title_width = max(1, available - (meta_width + 2 if meta_width else 0))
 
     title_text, positions, _ = window_positions(item.title, title_width, row.positions)
-    title_segments = _highlight(theme, title_text, positions, "text", selected)
+    title_role = "working" if item.status == "working" else "text"
+    title_segments = _highlight(theme, title_text, positions, title_role, selected)
 
     used = _plain_width(title_segments)
     if item.detail:

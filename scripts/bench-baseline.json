@@ -1,16 +1,16 @@
 {
   "metrics": {
     "changed_frames": 92,
-    "emitted_bytes": 39010,
+    "emitted_bytes": 40347,
     "frames": 92,
     "idle_calls_per_s": 1.5,
-    "latency_p50_ms": 0.391,
-    "latency_p99_ms": 0.749,
-    "needed_bytes": 43144,
+    "latency_p50_ms": 0.275,
+    "latency_p99_ms": 0.538,
+    "needed_bytes": 44785,
     "null_frames": 0,
-    "paint_ratio": 1.106,
-    "scale_p50_ms": 3.35,
-    "scale_p99_ms": 4.618,
+    "paint_ratio": 1.11,
+    "scale_p50_ms": 2.225,
+    "scale_p99_ms": 2.826,
     "unhandled_sequences": 0
   },
   "parts": {
@@ -18,86 +18,86 @@
     "io": 96.6,
     "latency": 100.0,
     "paint": 100.0,
-    "scale": 96.9
+    "scale": 100.0
   },
   "scenarios": {
     "idle": {
-      "bytes_per_frame": 31,
+      "bytes_per_frame": 33,
       "calls": 6,
-      "emitted_bytes": 1181,
+      "emitted_bytes": 1221,
       "frames": 37,
-      "needed_bytes": 2114,
+      "needed_bytes": 2434,
       "null_frames": 0,
-      "p50_ms": 0.359,
-      "p99_ms": 0.434,
-      "paint_ratio": 1.79
+      "p50_ms": 0.234,
+      "p99_ms": 0.271,
+      "paint_ratio": 1.9934
     },
     "narrow": {
-      "bytes_per_frame": 968,
+      "bytes_per_frame": 984,
       "calls": 0,
-      "emitted_bytes": 4843,
+      "emitted_bytes": 4923,
       "frames": 5,
-      "needed_bytes": 5234,
+      "needed_bytes": 5318,
       "null_frames": 0,
-      "p50_ms": 0.685,
-      "p99_ms": 0.717,
-      "paint_ratio": 1.0807
+      "p50_ms": 0.491,
+      "p99_ms": 0.535,
+      "paint_ratio": 1.0802
     },
     "navigate": {
-      "bytes_per_frame": 400,
+      "bytes_per_frame": 403,
       "calls": 8,
-      "emitted_bytes": 8818,
+      "emitted_bytes": 8877,
       "frames": 22,
-      "needed_bytes": 9401,
+      "needed_bytes": 9460,
       "null_frames": 0,
-      "p50_ms": 0.391,
-      "p99_ms": 0.438,
-      "paint_ratio": 1.0661
+      "p50_ms": 0.275,
+      "p99_ms": 0.31,
+      "paint_ratio": 1.0657
     },
     "open": {
-      "bytes_per_frame": 4302,
+      "bytes_per_frame": 4416,
       "calls": 0,
-      "emitted_bytes": 4302,
+      "emitted_bytes": 4416,
       "frames": 1,
-      "needed_bytes": 3297,
+      "needed_bytes": 3343,
       "null_frames": 0,
-      "p50_ms": 0.775,
-      "p99_ms": 0.775,
-      "paint_ratio": 0.7664
+      "p50_ms": 0.525,
+      "p99_ms": 0.525,
+      "paint_ratio": 0.757
     },
     "scale": {
-      "bytes_per_frame": 505,
+      "bytes_per_frame": 563,
       "calls": 0,
-      "emitted_bytes": 3541,
+      "emitted_bytes": 3945,
       "frames": 7,
-      "needed_bytes": 3919,
+      "needed_bytes": 4351,
       "null_frames": 0,
-      "p50_ms": 3.35,
-      "p99_ms": 4.618,
-      "paint_ratio": 1.1067
+      "p50_ms": 2.225,
+      "p99_ms": 2.826,
+      "paint_ratio": 1.1029
     },
     "scope": {
-      "bytes_per_frame": 680,
+      "bytes_per_frame": 686,
       "calls": 0,
-      "emitted_bytes": 5444,
+      "emitted_bytes": 5488,
       "frames": 8,
-      "needed_bytes": 6840,
+      "needed_bytes": 6886,
       "null_frames": 0,
-      "p50_ms": 0.306,
-      "p99_ms": 0.567,
-      "paint_ratio": 1.2564
+      "p50_ms": 0.211,
+      "p99_ms": 0.393,
+      "paint_ratio": 1.2547
     },
     "typing": {
-      "bytes_per_frame": 906,
+      "bytes_per_frame": 956,
       "calls": 0,
-      "emitted_bytes": 10881,
+      "emitted_bytes": 11477,
       "frames": 12,
-      "needed_bytes": 12339,
+      "needed_bytes": 12993,
       "null_frames": 0,
-      "p50_ms": 0.541,
-      "p99_ms": 0.749,
-      "paint_ratio": 1.134
+      "p50_ms": 0.376,
+      "p99_ms": 0.538,
+      "paint_ratio": 1.1321
     }
   },
-  "score": 99.2
+  "score": 99.7
 }

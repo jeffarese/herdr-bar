@@ -1,9 +1,8 @@
 id = "herdr-bar"
 name = "Bar"
-version = "0.4.0"
-# 0.7.4 is the first release with session-modal popup plugin panes;
-# session.snapshot (the whole model in one call) landed in 0.7.2.
-min_herdr_version = "0.7.4"
+version = "0.5.0"
+# Requires startup hooks and agent session metadata from Herdr 0.9.
+min_herdr_version = "0.9.0"
 description = "Cmd+K command bar with auto title: automatic tab titles, agent icons, and fuzzy search"
 platforms = ["linux", "macos"]
 
@@ -30,3 +29,24 @@ placement = "popup"
 width = "74%"
 height = "62%"
 command = ["python3", "run.py"]
+
+[[startup]]
+command = ["python3", "run.py", "--start-titles"]
+
+[[events]]
+on = "pane.agent_detected"
+command = ["python3", "run.py", "--start-titles"]
+
+[[actions]]
+id = "start-titles"
+title = "Start automatic tab titles"
+description = "Keep Claude and Codex task titles updated while the bar is closed"
+contexts = ["global"]
+command = ["python3", "run.py", "--start-titles", "--resume"]
+
+[[actions]]
+id = "stop-titles"
+title = "Stop automatic tab titles"
+description = "Stop this server's title watcher until explicitly started again"
+contexts = ["global"]
+command = ["python3", "run.py", "--stop-titles"]

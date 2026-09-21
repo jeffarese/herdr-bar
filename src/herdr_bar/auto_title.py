@@ -1,12 +1,9 @@
-"""Fill unnamed Claude tabs from local transcripts, leaving named work alone.
-
-Only runs while the popup is open. No model calls, transcript uploads, or
-terminal/branch-derived names. A successful name is left alone on later opens,
-just like a name supplied by a person or another plugin.
-"""
+"""Follow agent task titles while preserving names supplied by the user."""
 
 from __future__ import annotations
 
+import fcntl
+import hashlib
 import json
 import os
 import re
@@ -19,6 +16,17 @@ from .textutil import sanitize, truncate
 
 MAX_SCAN = 2 * 1024 * 1024
 SESSION_ID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
+
+
+def title_state_dir() -> Optional[Path]:
+    directory = os.environ.get("HERDR_PLUGIN_STATE_DIR")
+    socket_path = os.environ.get("HERDR_SOCKET_PATH")
+    if not directory:
+        return None
+    if not socket_path:
+        return Path(directory)
+    key = hashlib.sha256(os.path.abspath(socket_path).encode()).hexdigest()[:24]
+    return Path(directory) / "title-servers" / key
 
 
 def _title(value: Any) -> str:
@@ -112,18 +120,33 @@ class TranscriptReader:
         return state["title"] or state["opening"]
 
 
-def _candidates(snapshot: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-    """Only default tabs with one unambiguously identified, unnamed agent."""
+def _agent_title(agent: Dict[str, Any], pane: Dict[str, Any]) -> str:
+    title = _title(agent.get("terminal_title_stripped") or pane.get("terminal_title_stripped"))
+    cwd = agent.get("cwd") or pane.get("cwd") or ""
+    folder = Path(cwd).name
+    if folder and title.endswith(" | " + folder):
+        title = title[:-(len(folder) + 3)].strip()
+    generic = ("", "codex", "claude", "claude code", folder.casefold(), cwd.casefold())
+    if title.casefold() in generic:
+        return ""
+    return title
+
+
+def _candidates(
+    snapshot: Dict[str, Any], owned: Optional[Dict] = None,
+) -> Dict[str, Dict[str, Any]]:
+    """Default or plugin-owned tabs with one unambiguously identified agent."""
+    owned = owned or {}
     panes = {pane.get("pane_id"): pane for pane in snapshot.get("panes", [])}
+    agents_by_tab: Dict[str, list] = {}
+    for agent in snapshot.get("agents", []):
+        agents_by_tab.setdefault(agent.get("tab_id"), []).append(agent)
     positions: Dict[str, int] = {}
     candidates = {}
     for tab in snapshot.get("tabs", []):
         workspace = tab.get("workspace_id", "")
         positions[workspace] = positions.get(workspace, 0) + 1
-        if tab.get("label") not in (None, "", str(positions[workspace])):
-            continue
-        agents = [agent for agent in snapshot.get("agents", [])
-                  if agent.get("tab_id") == tab.get("tab_id")]
+        agents = agents_by_tab.get(tab.get("tab_id"), [])
         if len(agents) != 1:
             continue
         agent = agents[0]
@@ -133,13 +156,23 @@ def _candidates(snapshot: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
         if not pane or pane.get("label") or agent.get("name"):
             continue
         session = agent.get("agent_session") or pane.get("agent_session") or {}
-        if (agent.get("agent") != "claude" or session.get("agent") != "claude"
+        kind = agent.get("agent")
+        if (kind not in ("claude", "codex") or session.get("agent") != kind
                 or session.get("kind") != "id"):
             continue
         session_id = session.get("value")
         if not isinstance(session_id, str) or not SESSION_ID.fullmatch(session_id):
             continue
+        identity = [kind, session_id, agent.get("pane_id"), pane.get("terminal_id")]
+        previous = owned.get(tab["tab_id"], {})
+        if not isinstance(previous, dict):
+            previous = {}
+        if tab.get("label") not in (None, "", str(positions[workspace])):
+            if previous.get("identity") != identity or previous.get("title") != tab.get("label"):
+                continue
         candidates[tab["tab_id"]] = {
+            "identity": identity, "agent": kind,
+            "suggested": _agent_title(agent, pane),
             "session": session_id, "pane": agent.get("pane_id"),
             "terminal": pane.get("terminal_id"), "label": tab.get("label"),
             "cwd": agent.get("cwd") or pane.get("cwd") or "",
@@ -153,26 +186,71 @@ class AutoTitles:
             "0", "false", "no", "off",
         )
         self.reader = TranscriptReader()
+        self.owned: Dict[str, Any] = {}
+        self.state_dir = title_state_dir()
 
     def apply(self, client: HerdrClient, snapshot: Dict[str, Any]) -> Dict[str, Any]:
         if not self.enabled:
             return snapshot
-        candidates = _candidates(snapshot)
+        if self.state_dir is None:
+            return self._apply(client, snapshot)
+        try:
+            return self._persisted_apply(client, snapshot)
+        except OSError:
+            # Optional naming must not take down its caller. A later tick can
+            # retry when permissions, disk space, or the state directory recover.
+            return snapshot
+
+    def _persisted_apply(self, client: HerdrClient, snapshot: Dict[str, Any]) -> Dict[str, Any]:
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        with (self.state_dir / "auto-titles.lock").open("a") as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return snapshot
+            path = self.state_dir / "auto-titles.json"
+            try:
+                saved = json.loads(path.read_text())
+                self.owned = saved if isinstance(saved, dict) else {}
+            except FileNotFoundError:
+                self.owned = {}
+            except ValueError:
+                self.owned = {}
+            before = dict(self.owned)
+            # Verify write access before renaming any tabs. The same staging
+            # file is committed only if ownership changes, avoiding idle writes.
+            staging = path.with_suffix(".tmp")
+            result = self._apply(client, snapshot, staging)
+            if self.owned != before:
+                staging.write_text(json.dumps(self.owned))
+                staging.replace(path)
+            return result
+
+    def _apply(
+        self, client: HerdrClient, snapshot: Dict[str, Any], staging: Optional[Path] = None,
+    ) -> Dict[str, Any]:
+        candidates = _candidates(snapshot, self.owned)
+        self.owned = {key: value for key, value in self.owned.items() if key in candidates}
         live = {candidate["session"] for candidate in candidates.values()}
         self.reader.sessions = {
             key: value for key, value in self.reader.sessions.items() if key in live
         }
         for tab_id, candidate in candidates.items():
-            title = self.reader.title(candidate["session"], candidate["cwd"])
-            if not title:
+            title = candidate["suggested"]
+            if not title and candidate["agent"] == "claude":
+                title = self.reader.title(candidate["session"], candidate["cwd"])
+            if not title or title == candidate["label"]:
                 continue
             try:
                 # Disk reads can take time: check names and session identity
                 # again immediately before writing, including custom pane names.
                 snapshot = client.snapshot()
-                if _candidates(snapshot).get(tab_id) != candidate:
+                if _candidates(snapshot, self.owned).get(tab_id) != candidate:
                     continue
+                if staging is not None:
+                    staging.write_text(json.dumps(self.owned))
                 client.rename_tab(tab_id, title)
+                self.owned[tab_id] = {"identity": candidate["identity"], "title": title}
             except HerdrError:
                 continue  # Optional naming must never prevent opening the bar.
             for tab in snapshot.get("tabs", []):

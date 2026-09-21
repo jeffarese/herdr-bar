@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## 0.5.0
+
+- Follow Claude and Codex task titles every two seconds, including while the
+  popup is closed. Start one watcher through startup and agent-detection hooks.
+- Persist ownership of automatic names so later task titles update them while
+  manual tab, pane, and agent names remain untouched.
+- Keep all naming I/O out of the popup; handle unavailable state storage,
+  avoid duplicate idle snapshots, and isolate ownership and locks by server.
+- Reconnect after server restarts, check registration through the API, reload
+  upgraded watcher code without releasing its lock, and add start/stop actions.
+- Give status glyphs more space after vendor logos and color working titles orange.
+- Require Herdr 0.9.0 for startup hooks and agent session metadata.
+
 ## 0.4.0
 
 - Automatically name default Claude tabs from local session transcripts when

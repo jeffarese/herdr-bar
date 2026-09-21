@@ -108,6 +108,16 @@ def main(argv: Optional[List[str]] = None) -> int:
         sys.stdout.write("herdr-bar %s\n" % __version__)
         return 0
 
+    if any(arg in args for arg in ("--start-titles", "--watch-titles", "--stop-titles")):
+        from .title_watcher import start, stop, watch
+        if args[0] == "--watch-titles":
+            return watch(int(args[1]))
+        if args[0] == "--stop-titles":
+            stop()
+        else:
+            start(resume="--resume" in args)
+        return 0
+
     config = Config.load()
     client = HerdrClient()
 
@@ -133,6 +143,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         selection_background = default_selection_background(appearance)
     theme = Theme(config.colors, selection_background, appearance)
 
+    from .title_watcher import start
+    start()
     bar = Bar(client, config, recents, theme)
     try:
         bar.bootstrap()
