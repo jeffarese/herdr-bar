@@ -132,6 +132,32 @@ def _agent_title(agent: Dict[str, Any], pane: Dict[str, Any]) -> str:
     return title
 
 
+_NAME_STRIP = re.compile(r"[^a-z0-9_-]+")
+
+
+def _default_agent_name(name: Any, kind: Any, cwd: str) -> bool:
+    """Whether an agent name is just the one derived from its folder.
+
+    ``herdr agent start`` requires a name, so launchers such as
+    herdr-newtab-plus fill it from the folder (``herdr-bar``, then
+    ``herdr-bar-2``...). That is a default, not a name somebody chose.
+    """
+    if not isinstance(name, str) or not name:
+        return False
+    base = _NAME_STRIP.sub("-", Path(cwd.rstrip("/")).name.lower()).strip("-_")
+    if not base or not base[0].isalpha():
+        base = "%s-%s" % (kind, base) if base else str(kind)
+    base = _NAME_STRIP.sub("-", base).strip("-_")[:32]
+    if not base:
+        return False
+    if name == base:
+        return True
+    match = re.fullmatch(r"(.+)(-\d{1,2})", name)
+    return bool(
+        match and int(match[2][1:]) >= 2 and match[1] == base[: 32 - len(match[2])]
+    )
+
+
 def _candidates(
     snapshot: Dict[str, Any], owned: Optional[Dict] = None,
 ) -> Dict[str, Dict[str, Any]]:
@@ -153,7 +179,12 @@ def _candidates(
         pane = panes.get(agent.get("pane_id"), {})
         # A pane label or agent name is custom even if it happens to say
         # "claude". Never infer ownership from equality to a generated title.
-        if not pane or pane.get("label") or agent.get("name"):
+        # The one exception is the folder-derived name a launcher had to pass.
+        cwd = agent.get("cwd") or pane.get("cwd") or ""
+        name = agent.get("name")
+        if not pane or pane.get("label") or (
+            name and not _default_agent_name(name, agent.get("agent"), cwd)
+        ):
             continue
         session = agent.get("agent_session") or pane.get("agent_session") or {}
         kind = agent.get("agent")

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.5.1
+
+- Auto titles now treat the folder-derived agent name that launchers such as
+  herdr-newtab-plus pass to `herdr agent start` as a default, so those tabs
+  get task titles too.
+
 ## 0.5.0
 
 - Follow Claude and Codex task titles every two seconds, including while the

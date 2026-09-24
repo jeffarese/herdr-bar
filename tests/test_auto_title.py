@@ -189,6 +189,23 @@ class AutoTitlesTest(unittest.TestCase):
                 self.apply()
         self.assertEqual(self.client.calls, [])
 
+    def test_folder_derived_agent_names_are_defaults(self):
+        # herdr agent start needs a name, so launchers pass the folder's.
+        cwd = self.client._snapshot["agents"][0]["cwd"]
+        folder = os.path.basename(cwd.rstrip("/")).lower()
+        for name in (folder, folder + "-2"):
+            with self.subTest(name=name):
+                self.client = FakeClient(snapshot())
+                self.client._snapshot["agents"][0]["name"] = name
+                self.apply()
+                self.assertEqual(self.client.calls, [("rename", "w1:t9", "Repair login")])
+        for name in (folder + "-reviewer", folder[:1] + "-2", folder + "-1"):
+            with self.subTest(name=name):
+                self.client = FakeClient(snapshot())
+                self.client._snapshot["agents"][0]["name"] = name
+                self.apply()
+                self.assertEqual(self.client.calls, [])
+
     def test_empty_name_opts_back_in(self):
         self.apply()
         self.client._snapshot["tabs"][0]["label"] = ""

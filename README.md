@@ -69,8 +69,10 @@ transcript supplies its generated title or first human prompt when Herdr has no
 useful terminal title yet. No extra model requests are made.
 
 - **Your names win.** Existing custom tab names, pane labels and agent names
-  are preserved. Only default names and names recorded as written by this
-  plugin are updated. Manually changing a name opts that tab out; clearing it
+  are preserved. The folder-derived agent name a launcher has to pass to
+  `herdr agent start` (`app`, `app-2`, as herdr-newtab-plus does) counts as a
+  default, not a custom name. Only default names and names recorded as written
+  by this plugin are updated. Manually changing a name opts that tab out; clearing it
   opts back in. Tabs with multiple agents are left alone.
 - **Updates survive reopening.** Ownership is saved in the plugin state
   directory, tied to the agent session and terminal. Old custom names are not
