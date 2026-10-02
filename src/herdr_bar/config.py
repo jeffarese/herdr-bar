@@ -22,6 +22,7 @@ DEFAULTS: Dict[str, Any] = {
     "workspaces": "auto",  # true | false | "auto" (on with more than one space)
     "colors": {},  # role -> "#rrggbb" | ansi name | 0-255
     "selection_background": "auto",  # "auto" | "none" | "#rrggbb" | 0-255
+    "claude_config_dirs": [],  # extra CLAUDE_CONFIG_DIR roots holding transcripts
 }
 
 
@@ -41,6 +42,10 @@ class Config(object):
         colors = merged.get("colors")
         self.colors = colors if isinstance(colors, dict) else {}
         self.selection_background = merged.get("selection_background", "auto")
+        dirs = merged.get("claude_config_dirs")
+        self.claude_config_dirs = [
+            value for value in dirs if isinstance(value, str) and value.strip()
+        ] if isinstance(dirs, list) else []
 
     @staticmethod
     def path(config_dir: Optional[str] = None) -> Optional[str]:

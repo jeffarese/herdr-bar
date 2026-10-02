@@ -9,9 +9,10 @@ import os
 import re
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from .client import HerdrClient, HerdrError
+from .config import Config
 from .textutil import sanitize, truncate
 
 MAX_SCAN = 2 * 1024 * 1024
@@ -50,10 +51,44 @@ def _opening(content: Any) -> str:
     return _title(content.strip().split("\n")[0])
 
 
+def claude_roots() -> List[Path]:
+    """Claude config directories to search, the server's own first."""
+    roots: List[Path] = []
+    for value in [os.environ.get("CLAUDE_CONFIG_DIR") or "~/.claude",
+                  *Config.load().claude_config_dirs]:
+        root = Path(value).expanduser()
+        if root not in roots:
+            roots.append(root)
+    return roots
+
+
 class TranscriptReader:
-    def __init__(self, root: Optional[Path] = None) -> None:
-        self.root = root or Path(os.environ.get("CLAUDE_CONFIG_DIR") or "~/.claude").expanduser()
+    def __init__(self, roots: Optional[Sequence[Path]] = None) -> None:
+        # None re-reads the config on each search, so edits apply without a restart.
+        self.roots = list(roots) if roots is not None else None
         self.sessions: Dict[str, Dict[str, Any]] = {}
+
+    def _find(self, session_id: str, cwd: str) -> Optional[Path]:
+        roots = self.roots if self.roots is not None else claude_roots()
+        name = session_id + ".jsonl"
+        folder = re.sub(r"[^a-zA-Z0-9]", "-", cwd)
+        # Stat the expected project path in every root before listing any
+        # projects; the listing covers sessions started in another directory.
+        for root in roots:
+            candidate = root / "projects" / folder / name
+            try:
+                if candidate.is_file():
+                    return candidate
+            except OSError:
+                continue
+        for root in roots:
+            try:
+                found = next((root / "projects").glob("*/" + name), None)
+            except OSError:
+                continue
+            if found is not None:
+                return found
+        return None
 
     def title(self, session_id: str, cwd: str) -> str:
         if not SESSION_ID.fullmatch(session_id):
@@ -66,15 +101,8 @@ class TranscriptReader:
             if time.monotonic() - state["searched"] < 10:
                 return ""
             state["searched"] = time.monotonic()
-            projects = self.root / "projects"
-            candidate = projects / re.sub(r"[^a-zA-Z0-9]", "-", cwd) / (session_id + ".jsonl")
-            try:
-                if not candidate.is_file():
-                    candidate = next(projects.glob("*/" + session_id + ".jsonl"), None)
-                if candidate is None:
-                    return ""
-                state["path"] = candidate
-            except OSError:
+            state["path"] = self._find(session_id, cwd)
+            if state["path"] is None:
                 return ""
         try:
             with state["path"].open("rb") as handle:

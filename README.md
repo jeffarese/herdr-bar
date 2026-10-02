@@ -86,8 +86,14 @@ useful terminal title yet. No extra model requests are made.
   you invoke `herdr-bar.start-titles` again. Disabling or uninstalling the
   plugin stops its connected watchers within ten seconds.
 - **Local sources.** Requires Herdr to report the Claude or Codex session ID.
-  Claude transcript fallback uses `CLAUDE_CONFIG_DIR` (default `~/.claude`).
-  Set `HERDR_AUTO_TITLE_TRANSCRIPT=false` in Herdr's environment before starting
+  Claude transcript fallback searches Herdr's `CLAUDE_CONFIG_DIR` (default
+  `~/.claude`) plus any `claude_config_dirs` in the [config](#configuring).
+- **Several Claude config directories.** If you run Claude with different
+  `CLAUDE_CONFIG_DIR` values (separate accounts, say), Herdr's Claude hook must
+  be installed in each one, or those tabs report no session ID:
+  `CLAUDE_CONFIG_DIR=<dir> herdr integration install claude`, then restart or
+  resume those sessions. List the same directories in `claude_config_dirs`.
+- **Opting out.** Set `HERDR_AUTO_TITLE_TRANSCRIPT=false` in Herdr's environment before starting
   it to disable automatic naming. The standalone Auto Title plugin's
   `config.env` is not read.
 
@@ -236,6 +242,7 @@ Optional. Write `config.json` in the plugin config directory
 | `refresh_ms` | `900` | how often the open bar re-reads the session |
 | `workspaces` | `"auto"` | `true`, `false`, or `"auto"` (on with more than one workspace) |
 | `selection_background` | `"auto"` | `"auto"` asks the terminal for its background color, or set `"none"`, a hex value, or a 0-255 ANSI index |
+| `claude_config_dirs` | `[]` | extra Claude config directories (`"~/.claude-work"`) whose transcripts supply tab titles; changes apply without a restart |
 | `colors` | `{}` | role → `#rrggbb`, an ANSI name (`bright_blue`), or 0-255. Roles: `accent`, `match`, `text`, `muted`, `blocked`, `working`, `done`, `idle`, `unknown`, plus `agent_claude`, `agent_codex`, `agent_pi`, `agent_grok`, `agent_kimi`, `agent_gemini`, `agent_cursor`, `agent_opencode` |
 
 Colors default to plain ANSI, so the bar follows whatever theme your terminal

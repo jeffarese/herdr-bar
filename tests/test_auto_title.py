@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from herdr_bar.app import Bar
-from herdr_bar.auto_title import MAX_SCAN, AutoTitles, TranscriptReader
+from herdr_bar.auto_title import MAX_SCAN, AutoTitles, TranscriptReader, claude_roots
 from herdr_bar.config import Config
 from herdr_bar.mru import Recents
 from herdr_bar.theme import Theme
@@ -35,7 +35,7 @@ class TranscriptTest(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.path = self.root / "projects" / "-work-app" / (SESSION + ".jsonl")
         self.path.parent.mkdir(parents=True)
-        self.reader = TranscriptReader(self.root)
+        self.reader = TranscriptReader([self.root])
 
     def write(self, *records):
         with self.path.open("a") as handle:
@@ -106,6 +106,51 @@ class TranscriptTest(unittest.TestCase):
     def test_invalid_session_id_cannot_escape_projects(self):
         self.assertEqual(self.reader.title("../../private", "/work/app"), "")
         self.assertEqual(self.reader.sessions, {})
+
+    def test_transcript_found_in_any_config_root(self):
+        self.write({"type": "ai-title", "aiTitle": "Second account"})
+        empty = Path(self.temp.name) / "missing-root"
+        reader = TranscriptReader([empty, self.root])
+        self.assertEqual(reader.title(SESSION, "/work/app"), "Second account")
+        moved = TranscriptReader([empty, self.root])
+        self.assertEqual(moved.title(SESSION, "/elsewhere"), "Second account")
+
+
+class ClaudeRootsTest(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.config = Path(self.temp.name) / "config"
+        self.config.mkdir()
+        self.env = patch.dict(os.environ, {"HERDR_PLUGIN_CONFIG_DIR": str(self.config),
+                                          "CLAUDE_CONFIG_DIR": "/srv/claude"})
+        self.env.start()
+        self.addCleanup(self.env.stop)
+
+    def configure(self, dirs):
+        (self.config / "config.json").write_text(json.dumps({"claude_config_dirs": dirs}))
+
+    def test_server_root_first_then_configured_roots_deduplicated(self):
+        self.configure(["~/.claude-work", "/srv/claude", "", 7, "/opt/claude"])
+        self.assertEqual(claude_roots(), [
+            Path("/srv/claude"), Path("~/.claude-work").expanduser(), Path("/opt/claude"),
+        ])
+
+    def test_default_root_without_config(self):
+        with patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": ""}):
+            self.assertEqual(claude_roots(), [Path("~/.claude").expanduser()])
+
+    def test_roots_added_later_are_searched_without_restart(self):
+        extra = Path(self.temp.name) / "work"
+        path = extra / "projects" / "-work-app" / (SESSION + ".jsonl")
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps({"type": "ai-title", "aiTitle": "Work task"}) + "\n")
+        reader = TranscriptReader()
+        with patch("herdr_bar.auto_title.time.monotonic", return_value=1):
+            self.assertEqual(reader.title(SESSION, "/work/app"), "")
+        self.configure([str(extra)])
+        with patch("herdr_bar.auto_title.time.monotonic", return_value=12):
+            self.assertEqual(reader.title(SESSION, "/work/app"), "Work task")
 
 
 class AutoTitlesTest(unittest.TestCase):

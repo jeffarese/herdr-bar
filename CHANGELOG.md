@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.6.0
+
+- Add `claude_config_dirs` so auto titles find Claude transcripts written under
+  other `CLAUDE_CONFIG_DIR` directories, and document installing Herdr's Claude
+  hook in each one.
+
 ## 0.5.1
 
 - Auto titles now treat the folder-derived agent name that launchers such as
