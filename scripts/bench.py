@@ -44,7 +44,7 @@ sys.path.insert(0, os.path.join(ROOT, "src"))
 sys.path.insert(0, ROOT)
 
 from herdr_bar import app as app_module  # noqa: E402
-from herdr_bar.app import PREVIEW_DEBOUNCE, SPINNER_INTERVAL, Bar  # noqa: E402
+from herdr_bar.app import PREVIEW_DEBOUNCE, Bar  # noqa: E402
 from herdr_bar.config import Config  # noqa: E402
 from herdr_bar.mru import Recents  # noqa: E402
 from herdr_bar.textutil import char_width  # noqa: E402
@@ -625,16 +625,15 @@ def scenario_scale(clock: Clock) -> Result:
 def scenario_idle(clock: Clock, seconds: float = 4.0) -> Result:
     """The bar sitting open while an agent works.
 
-    Replays the main loop's timers against a virtual clock: the spinner wakes
-    it every 110ms, the refresh every 900ms, and each wake decides for itself
-    whether anything needs redrawing.
+    Replays the main loop's timers against a virtual clock: the refresh wakes
+    it every 900ms, and each wake decides for itself whether anything needs
+    redrawing.
     """
     client = CountingClient()
     terminal = Recorder(104, 22)
     bar = build_bar(client)
     settle(bar, terminal)
     bar._last_refresh = clock.monotonic()
-    bar._last_spin = clock.monotonic()
     client.calls = 0
     samples: List[float] = []
     end = clock.monotonic() + seconds
@@ -643,11 +642,6 @@ def scenario_idle(clock: Clock, seconds: float = 4.0) -> Result:
         now = clock.monotonic()
         if now - bar._last_refresh >= bar.config.refresh_ms / 1000.0:
             bar.refresh()
-        if bar.config.spinner and now - bar._last_spin >= SPINNER_INTERVAL:
-            bar._last_spin = now
-            if any(row.item.status == "working" for row in bar.rows):
-                bar.tick += 1
-                bar._dirty = True
         bar.pump_preview(bar._list_height)
         bar.pump_ages()
         if bar.status and now >= bar.status_until:

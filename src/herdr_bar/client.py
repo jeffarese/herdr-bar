@@ -14,9 +14,11 @@ from __future__ import annotations
 
 import json
 import os
+import select
 import socket
 import subprocess
-from typing import Any, Dict, List, Optional
+import time
+from typing import Any, Dict, List, Optional, Sequence
 
 from .age import elapsed_seconds, pid_for
 
@@ -122,6 +124,8 @@ class HerdrClient:
 
     @staticmethod
     def _unwrap(response: Dict[str, Any]) -> Dict[str, Any]:
+        if not isinstance(response, dict):
+            raise HerdrError("herdr returned an unexpected response shape")
         error = response.get("error")
         if error:
             message = error.get("message") if isinstance(error, dict) else str(error)
@@ -226,3 +230,89 @@ class HerdrClient:
             self._unwrap(self._socket_call("pane.focus", {"pane_id": pane_id}))
         except (OSError, ValueError):
             self._socket_ok = False
+
+
+class EventStream:
+    """A long-lived ``events.subscribe`` connection used only as a wake-up.
+
+    The events themselves are not interpreted: whoever waits re-reads the
+    snapshot, so a dropped or coalesced event costs latency, never accuracy.
+    """
+
+    RETRY = 2.0
+
+    def __init__(self, socket_path: Optional[str], timeout: float = 2.0) -> None:
+        self.socket_path = socket_path
+        self.timeout = timeout
+        self.conn: Optional[socket.socket] = None
+        self.subscriptions: Sequence[Dict[str, str]] = ()
+        self.retry_at = 0.0
+        self.pending = False
+
+    def follow(self, subscriptions: Sequence[Dict[str, str]]) -> None:
+        """Keep exactly these subscriptions open; raise HerdrError on refusal."""
+        if self.conn is not None and list(subscriptions) == list(self.subscriptions):
+            return
+        self.close()
+        # A refused or dropped stream is retried at polling pace, never in a hot loop.
+        if not self.socket_path or not subscriptions or time.monotonic() < self.retry_at:
+            return
+        conn = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            conn.settimeout(self.timeout)
+            conn.connect(self.socket_path)
+            request = {"id": "bar-events", "method": "events.subscribe",
+                       "params": {"subscriptions": list(subscriptions)}}
+            conn.sendall((json.dumps(request) + "\n").encode("utf-8"))
+            buffered = b""
+            while b"\n" not in buffered:
+                chunk = conn.recv(65536)
+                if not chunk:
+                    raise HerdrError("herdr closed the event subscription")
+                buffered += chunk
+                if len(buffered) > 65536:
+                    raise HerdrError("event subscription response exceeded 64 KiB")
+            response, trailing = buffered.split(b"\n", 1)
+            HerdrClient._unwrap(json.loads(response))
+            conn.setblocking(False)
+        except (OSError, ValueError, HerdrError) as error:
+            conn.close()
+            self.retry_at = time.monotonic() + self.RETRY
+            raise HerdrError("event subscription failed: %s" % error) from error
+        self.conn = conn
+        self.subscriptions = list(subscriptions)
+        self.pending = bool(trailing.strip())
+
+    def wait(self, timeout: float) -> bool:
+        """Sleep until an event arrives or the timeout passes; True on an event."""
+        if self.conn is None:
+            time.sleep(timeout)
+            return False
+        if self.pending:
+            self.pending = False
+            return True
+        try:
+            ready, _, _ = select.select([self.conn], [], [], max(0.0, timeout))
+            if not ready:
+                return False
+            # Bound each wake-up even if events arrive faster than we read.
+            # Remaining bytes keep the socket readable for the next wait.
+            if self.conn.recv(65536):
+                return True
+        except BlockingIOError:
+            return True
+        except (OSError, ValueError):
+            pass
+        self.close()
+        self.retry_at = time.monotonic() + self.RETRY
+        return True
+
+    def close(self) -> None:
+        if self.conn is not None:
+            try:
+                self.conn.close()
+            except OSError:
+                pass
+        self.conn = None
+        self.subscriptions = ()
+        self.pending = False

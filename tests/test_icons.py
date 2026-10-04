@@ -34,14 +34,14 @@ class IconTests(unittest.TestCase):
         theme.agent_icons = True
         for width in (24, 46, 80, 120):
             for selected in (True, False):
-                rendered = render_row(theme, row, width, selected, 0, False)
+                rendered = render_row(theme, row, width, selected, False)
                 self.assertEqual(visible_width(rendered), width)
-        rendered = render_row(theme, row, 80, True, 0, False)
+        rendered = render_row(theme, row, 80, True, False)
         self.assertTrue(strip_ansi(rendered).startswith("▌ \ue1a1 "))
         self.assertIn("@helper", strip_ansi(rendered))
         self.assertIn("\x1b[4m", rendered)
         theme.agent_icons = False
-        plain = strip_ansi(render_row(theme, row, 80, False, 0, False))
+        plain = strip_ansi(render_row(theme, row, 80, False, False))
         self.assertNotIn("\ue1a1", plain)
         self.assertIn("@helper", plain)
 
@@ -51,7 +51,7 @@ class IconTests(unittest.TestCase):
         for agent in ("codex", "claude", "pi", "grok", "kimi", "unrecognised"):
             row = Row(Item("agent", "agent:1", "Fix search", agent=agent), ())
             for width in (24, 46, 80):
-                plain = strip_ansi(render_row(theme, row, width, False, 0, False))
+                plain = strip_ansi(render_row(theme, row, width, False, False))
                 self.assertEqual(visible_width(plain), width)
                 if logo_for(agent):
                     self.assertTrue(plain.startswith("  " + logo_for(agent) + " "))
@@ -60,4 +60,4 @@ class IconTests(unittest.TestCase):
                     self.assertIn(agent, plain)
         theme.agent_icons = False
         row = Row(Item("agent", "agent:1", "Fix search", agent="codex"), ())
-        self.assertIn("codex", strip_ansi(render_row(theme, row, 80, False, 0, False)))
+        self.assertIn("codex", strip_ansi(render_row(theme, row, 80, False, False)))

@@ -8,7 +8,7 @@
 
 The real ``Bar`` runs against ``scripts/busy_session.py``. Nothing is faked at
 the drawing layer: the recorder feeds keys into the same handlers the terminal
-would, on a virtual clock so spinners, the preview debounce and the preview
+would, on a virtual clock so the preview debounce and the preview
 cache all behave exactly as they do live, then rasterises the escape sequences
 the bar emits and hands the frames to ffmpeg.
 
@@ -34,7 +34,7 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 import busy_session  # noqa: E402
 
 from herdr_bar import app as app_module  # noqa: E402
-from herdr_bar.app import SPINNER_INTERVAL, Bar  # noqa: E402
+from herdr_bar.app import Bar  # noqa: E402
 from herdr_bar.config import Config  # noqa: E402
 from herdr_bar.icons import LOGOS  # noqa: E402
 from herdr_bar.keys import KEY, TEXT, Event  # noqa: E402
@@ -267,7 +267,6 @@ class Recorder(object):
         self.chip: Optional[str] = None
         self.chip_at = -99.0
         self.outcome = ""
-        self._last_spin = self.clock.now
 
     # -- timeline ----------------------------------------------------------
 
@@ -319,11 +318,6 @@ class Recorder(object):
 
     def _tick(self) -> None:
         self.clock.now += self.dt
-
-        if self.clock.now - self._last_spin >= SPINNER_INTERVAL:
-            self._last_spin = self.clock.now
-            if any(row.item.status == "working" for row in self.bar.rows):
-                self.bar.tick += 1
 
         self.bar.pump_preview(self.bar._list_height)
         self.bar.pump_ages()

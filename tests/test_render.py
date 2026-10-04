@@ -259,24 +259,24 @@ class RowTest(unittest.TestCase):
     def test_row_is_padded_to_exactly_the_width(self):
         for width in range(20, 120, 7):
             for item in self.items:
-                row = render_row(self.theme, Row(item, ()), width, False, 0, True)
+                row = render_row(self.theme, Row(item, ()), width, False, True)
                 self.assertEqual(visible_width(row), width, "width %d, %r" % (width, item.title))
 
     def test_selected_row_is_padded_too(self):
         for width in (30, 60, 100):
-            row = render_row(self.theme, Row(self.items[0], ()), width, True, 0, True)
+            row = render_row(self.theme, Row(self.items[0], ()), width, True, True)
             self.assertEqual(visible_width(row), width)
 
     def test_wide_characters_do_not_overflow(self):
         item = self.items[0]
         item.title = "日本語のタブ名前がとても長い場合のテスト" * 3
         for width in (24, 40, 80):
-            row = render_row(self.theme, Row(item, ()), width, False, 0, True)
+            row = render_row(self.theme, Row(item, ()), width, False, True)
             self.assertEqual(visible_width(row), width)
 
     def test_highlights_stay_inside_the_visible_title(self):
         item = self.items[0]
-        row = render_row(self.theme, Row(item, (0, 1, 2)), 60, False, 0, True)
+        row = render_row(self.theme, Row(item, (0, 1, 2)), 60, False, True)
         self.assertEqual(visible_width(row), 60)
 
     def test_a_summary_match_is_highlighted_where_the_summary_is_drawn(self):
@@ -285,18 +285,18 @@ class RowTest(unittest.TestCase):
         found = score_item(terms, item.fields)
         self.assertIsNotNone(found)
         row = Row(item, found[1].get(0, ()), found[1])
-        self.assertIn("\x1b[4m", render_row(self.theme, row, 120, False, 0, True))
+        self.assertIn("\x1b[4m", render_row(self.theme, row, 120, False, True))
 
     def test_a_meta_match_is_highlighted_and_the_row_keeps_its_width(self):
         item = next(i for i in self.items if i.agent_name)
         found = score_item(split_query(item.agent_name), item.fields)
         self.assertIsNotNone(found)
         row = Row(item, found[1].get(0, ()), found[1])
-        rendered = render_row(self.theme, row, 120, False, 0, True)
+        rendered = render_row(self.theme, row, 120, False, True)
         self.assertIn("\x1b[4m" + self.theme.fg("match") + item.agent_name, rendered)
         for width in range(20, 130, 3):
             self.assertEqual(
-                visible_width(render_row(self.theme, row, width, False, 0, True, 90.0)),
+                visible_width(render_row(self.theme, row, width, False, True, 90.0)),
                 width,
                 "width %d" % width,
             )
@@ -304,37 +304,37 @@ class RowTest(unittest.TestCase):
     def test_matched_characters_are_underlined_and_the_rest_is_not(self):
         item = self.items[0]
         item.title = "week loading"
-        row = render_row(self.theme, Row(item, (0, 1, 2, 3)), 60, False, 0, True)
+        row = render_row(self.theme, Row(item, (0, 1, 2, 3)), 60, False, True)
         self.assertIn("\x1b[4m" + self.theme.fg("match") + "week", row)
         self.assertNotIn("\x1b[4m" + self.theme.fg("match") + " loading", row)
         self.assertEqual(visible_width(row), 60)
 
     def test_the_summary_follows_the_tab_name_when_there_is_room(self):
         item = next(i for i in self.items if i.detail)
-        plain = strip_ansi(render_row(self.theme, Row(item, ()), 120, False, 0, True))
+        plain = strip_ansi(render_row(self.theme, Row(item, ()), 120, False, True))
         self.assertIn(item.title + " — " + item.detail, plain)
 
     def test_a_narrow_row_drops_the_summary_and_keeps_its_width(self):
         item = next(i for i in self.items if i.detail)
         for width in range(20, 120, 3):
-            row = render_row(self.theme, Row(item, ()), width, False, 0, True)
+            row = render_row(self.theme, Row(item, ()), width, False, True)
             self.assertEqual(visible_width(row), width, "width %d" % width)
-        narrow = strip_ansi(render_row(self.theme, Row(item, ()), 34, False, 0, True))
+        narrow = strip_ansi(render_row(self.theme, Row(item, ()), 34, False, True))
         self.assertNotIn(item.detail, narrow)
 
     def test_running_time_joins_the_meta_without_overflowing(self):
         item = self.items[0]
         for width in range(20, 120, 7):
-            row = render_row(self.theme, Row(item, ()), width, False, 0, True, age=7440)
+            row = render_row(self.theme, Row(item, ()), width, False, True, age=7440)
             self.assertEqual(visible_width(row), width)
-        self.assertIn("2h04m", render_row(self.theme, Row(item, ()), 90, False, 0, True, 7440))
+        self.assertIn("2h04m", render_row(self.theme, Row(item, ()), 90, False, True, 7440))
 
     def test_context_is_not_repeated_when_the_summary_already_shows_it(self):
         item = next(item for item in self.items if item.detail)
         item.detail = "pacebeats"
         item.subtitle = "/Users/dev/workspace/pacebeats"
         item.workspace_label = "pacebeats"
-        plain = strip_ansi(render_row(self.theme, Row(item, ()), 120, False, 0, True))
+        plain = strip_ansi(render_row(self.theme, Row(item, ()), 120, False, True))
         self.assertEqual(plain.count("pacebeats"), 1)
 
     def test_context_is_not_repeated_when_it_is_the_title(self):
@@ -343,7 +343,7 @@ class RowTest(unittest.TestCase):
         item.detail = ""
         item.subtitle = "/Users/dev/workspace/erestor"
         item.workspace_label = "erestor"
-        plain = strip_ansi(render_row(self.theme, Row(item, ()), 120, False, 0, True))
+        plain = strip_ansi(render_row(self.theme, Row(item, ()), 120, False, True))
         self.assertEqual(plain.count("erestor"), 1)
 
     def test_agent_labels_have_distinct_colors(self):
@@ -356,25 +356,24 @@ class RowTest(unittest.TestCase):
         item = next(item for item in self.items if item.agent == "claude" and not item.agent_name)
         for agent, role in expected.items():
             item.agent = agent
-            rendered = render_row(self.theme, Row(item, ()), 120, False, 0, True)
+            rendered = render_row(self.theme, Row(item, ()), 120, False, True)
             self.assertIn(self.theme.fg(role) + agent, rendered)
         self.assertEqual(len({self.theme.fg(role) for role in expected.values()}), len(expected))
 
     def test_named_agents_use_their_underlying_agent_color(self):
         item = next(item for item in self.items if item.agent_name)
-        rendered = render_row(self.theme, Row(item, ()), 120, False, 0, True)
+        rendered = render_row(self.theme, Row(item, ()), 120, False, True)
         self.assertIn(self.theme.fg("agent_claude") + "@battery", rendered)
 
     def test_a_pane_with_no_reading_shows_no_time(self):
         item = self.items[0]
-        plain = strip_ansi(render_row(self.theme, Row(item, ()), 90, False, 0, True))
+        plain = strip_ansi(render_row(self.theme, Row(item, ()), 90, False, True))
         self.assertNotRegex(plain, r"\d+[hms]\b")
 
-    def test_spinner_advances_for_working_rows(self):
+    def test_working_rows_show_a_steady_glyph(self):
         working = next(item for item in self.items if item.status == "working")
-        first = render_row(self.theme, Row(working, ()), 60, False, 0, True)
-        second = render_row(self.theme, Row(working, ()), 60, False, 1, True)
-        self.assertNotEqual(first, second)
+        rendered = strip_ansi(render_row(self.theme, Row(working, ()), 60, False, True))
+        self.assertIn("◐ ", rendered)
 
 
 class ThemeTest(unittest.TestCase):

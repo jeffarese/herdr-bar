@@ -246,13 +246,6 @@ class PartialUpdateTest(unittest.TestCase):
 
         self._agrees_with_a_full_repaint(steps)
 
-    def test_the_spinner(self):
-        def steps(bar):
-            for _ in range(12):
-                yield lambda: setattr(bar, "tick", bar.tick + 1)
-
-        self._agrees_with_a_full_repaint(steps)
-
     def test_the_close_confirmation_and_the_status_line(self):
         def steps(bar):
             yield bar.request_close
@@ -306,14 +299,6 @@ class RepaintTest(unittest.TestCase):
                 bar.draw(terminal)
 
         self._round_trip(frames_of(navigate))
-
-    def test_spinner_diffs_reproduce_every_frame(self):
-        def spin(bar, terminal):
-            for _ in range(12):
-                bar.tick += 1
-                bar.draw(terminal)
-
-        self._round_trip(frames_of(spin))
 
     def test_scope_and_empty_state_diffs_reproduce_every_frame(self):
         def scope(bar, terminal):

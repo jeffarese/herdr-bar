@@ -15,11 +15,13 @@ quick switcher, for the terminal.
 - **recognizable agent icons** — Claude, Codex, Pi, Grok, Kimi, Gemini, Cursor
   and OpenCode have distinct marks and colors. With the Herdr Agent Icons Max
   font installed, vendor logos lead each agent row, as shown in the demo.
+- **status in the tab bar** — agent tabs lead with their logo and status,
+  updated only when the status changes.
 
 - **fuzzy search over everything you can jump to** — agents, plain tabs, and
   workspaces, matched on title, working directory, agent name and kind, branch,
   workspace, and tab number.
-- **live status, herdr's own language** — `◉` needs you, spinner working,
+- **live status, herdr's own language** — `◉` needs you, `◐` working,
   `●` done, `✓` idle. Colors and glyphs mirror the herdr sidebar, and the list
   keeps updating while it is open.
 - **named panes on demand** — `%` switches to one row per pane, led by the
@@ -110,14 +112,66 @@ Pi, Grok or Kimi session easy to scan. Custom agent names remain visible; the
 vendor label is omitted when its logo already identifies it.
 
 The logos use the **Herdr Agent Icons Max** font from
-[herdr-radar](https://github.com/hhdebb/herdr-radar). If Radar already shows
-logos, you are ready. Otherwise follow Radar's font setup and reload your
-terminal configuration. The bar detects the font locally and falls back to
-colored text labels when it is unavailable. It never installs fonts for you.
+[herdr-radar](https://github.com/hhdebb/herdr-radar) (MIT; the vendor marks
+belong to their owners, see Radar's
+[third-party notices](https://github.com/hhdebb/herdr-radar/blob/main/THIRD_PARTY_NOTICES.md)).
+If Radar already shows logos, you are ready. Radar itself is not required:
+
+```bash
+# macOS; on Linux use ~/.local/share/fonts and run fc-cache -f afterwards
+curl -fsSL -o ~/Library/Fonts/HerdrAgentIconsMax-Regular.ttf \
+  https://raw.githubusercontent.com/hhdebb/herdr-radar/main/dist/HerdrAgentIconsMax-Regular.ttf
+```
+
+Then point your terminal at it for the logo codepoints. In Ghostty's config:
+
+```
+font-codepoint-map = U+E1A0-U+E1B7=Herdr Agent Icons Max
+```
+
+kitty takes `symbol_map U+E1A0-U+E1B7 Herdr Agent Icons Max`. Open a new
+window (or restart the terminal) to load it. The bar and the tab watcher
+detect the font locally and fall back to colored text labels (bar) or the
+status glyph alone (tabs) when it is unavailable. Neither installs fonts for you.
 
 Set `"agent_icons": "font"` to force logos (for example over SSH when the font
 is installed on your local terminal), or `"agent_icons": "none"` for text only.
 The demo uses the icon font and tabs already named for their tasks.
+
+## Live status in the tab bar
+
+Every tab with an agent leads its name with the agent's logo and its status,
+using the bar's glyphs: `◉` needs you, `◐` working, `●` done, `✓` idle, `○`
+unknown. With several agents in one tab, the most urgent one leads.
+
+```
+  ◐ Repair OAuth callbacks     ◉ Review spec.md     ✓ 3
+```
+
+- **Instant and cheap.** The background watcher subscribes to Herdr's
+  `pane.agent_status_changed` events, so a tab changes the moment its agent
+  does, with no extra polling. Only labels that actually change are rewritten.
+- **Never animates.** Glyphs are static: every rename redraws Herdr's tab bar
+  in each attached terminal, so a tab is rewritten only when its status or
+  name changes, never on a timer or on focus.
+- **No colors.** Herdr draws tab labels as plain text in its own tab colors,
+  so logos and glyphs take the tab's color; the sidebar and the bar keep theirs.
+- **Your names stay yours.** The prefix is added to whatever the tab is
+  called, whether that is an auto title, a name you typed, or the default
+  number. Renaming a tab keeps your new name. Unnamed tabs keep renumbering
+  when tabs before them close. Tabs without agents are never touched.
+- **Logos need the font.** Logos appear under the same `agent_icons` rule as
+  the bar; without the font, tabs show the status glyph alone.
+- **Turning it off.** Set `"tab_status": false` in the [config](#configuring),
+  or stop the watcher with `herdr-bar.stop-titles`; both put the bare names back.
+
+As of 0.7.0, working indicators are static in both the popup and tab labels.
+Existing `spinner` and `tab_flash` settings are ignored and can be removed.
+
+Herdr tab labels are plain text, so the status is part of the label: other
+tools reading tab names see the prefix, and the bar strips it from its own rows.
+Herdr cannot hand a renamed tab back its automatic number, so an unnamed tab
+that showed a status keeps its last number after the watcher stops.
 
 ## Making it a real Cmd+K
 
@@ -221,7 +275,6 @@ Optional. Write `config.json` in the plugin config directory
 {
   "preview": "auto",
   "mouse": true,
-  "spinner": true,
   "refresh_ms": 900,
   "workspaces": "auto",
   "selection_background": "auto",
@@ -237,12 +290,12 @@ Optional. Write `config.json` in the plugin config directory
 | --- | --- | --- |
 | `preview` | `"auto"` | `true`, `false` (hidden until `ctrl+o`), or `"auto"` (on when the popup is wide enough) |
 | `mouse` | `true` | click and wheel support |
-| `spinner` | `true` | animate the working glyph |
 | `agent_icons` | `"auto"` | Detect the local Herdr Agent Icons Max font; `"font"` forces logos (useful over SSH); `"none"` keeps text labels only |
 | `refresh_ms` | `900` | how often the open bar re-reads the session |
 | `workspaces` | `"auto"` | `true`, `false`, or `"auto"` (on with more than one workspace) |
 | `selection_background` | `"auto"` | `"auto"` asks the terminal for its background color, or set `"none"`, a hex value, or a 0-255 ANSI index |
 | `claude_config_dirs` | `[]` | extra Claude config directories (`"~/.claude-work"`) whose transcripts supply tab titles; changes apply without a restart |
+| `tab_status` | `true` | lead agent tab names with the logo and status glyph; `false` restores bare names |
 | `colors` | `{}` | role → `#rrggbb`, an ANSI name (`bright_blue`), or 0-255. Roles: `accent`, `match`, `text`, `muted`, `blocked`, `working`, `done`, `idle`, `unknown`, plus `agent_claude`, `agent_codex`, `agent_pi`, `agent_grok`, `agent_kimi`, `agent_gemini`, `agent_cursor`, `agent_opencode` |
 
 Colors default to plain ANSI, so the bar follows whatever theme your terminal
@@ -274,7 +327,12 @@ Eligible Claude and Codex tabs are updated through `tab.rename`, with a fresh
 name and session check before each write. Claude transcript fallback uses a
 bounded local read. `--list` and `--doctor` remain read-only. A singleton
 background watcher checks titles every two seconds; popup refreshes only read
-Herdr's snapshot. Each idle tick makes one snapshot request. Plugin registration
+Herdr's snapshot. Each idle tick makes one snapshot request. Tab status rides
+the same watcher: one `events.subscribe` stream (status changes of agent panes
+and agent detection) wakes it immediately, and a status change costs one
+rename per affected tab. Nothing is renamed on a timer. Decorated tabs are
+recorded in `tab-status.json` before their first prefixed label is written, so
+only prefixes the watcher wrote are ever removed. Plugin registration
 is checked through `plugin.list` every ten seconds, without assuming any registry
 file location. Automatic-name ownership and watcher locks are isolated by socket
 path under `HERDR_PLUGIN_STATE_DIR/title-servers/`; recent rows remain shared.

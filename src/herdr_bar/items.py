@@ -12,6 +12,8 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, List, Optional, Sequence
 
+from .tab_status import strip as strip_status
+
 KIND_AGENT = "agent"
 KIND_PANE = "pane"
 KIND_TAB = "tab"
@@ -142,6 +144,12 @@ def _first(*values: Any) -> str:
     return ""
 
 
+def _tab_label(tab: Dict[str, Any], has_agents: bool) -> str:
+    """The tab's name without the status prefix the watcher puts on agent tabs."""
+    label = _clean(tab.get("label"))
+    return _clean(strip_status(label)) if has_agents else label
+
+
 def _status_of(record: Dict[str, Any]) -> str:
     status = _clean(record.get("agent_status")) or STATUS_NONE
     return status
@@ -191,9 +199,9 @@ def build_items(snapshot: Dict[str, Any]) -> List[Item]:
             continue
         workspace_id = tab.get("workspace_id") or ""
         workspace_label = workspace_labels.get(workspace_id, "")
-        tab_label = _first(tab.get("label"))
         tab_number = tab.get("number") if isinstance(tab.get("number"), int) else None
         tab_agents = agents_by_tab.get(tab_id, [])
+        tab_label = _tab_label(tab, bool(tab_agents))
 
         if not tab_agents:
             pane = None
@@ -279,7 +287,8 @@ def build_items(snapshot: Dict[str, Any]) -> List[Item]:
                     kind=KIND_SPACE,
                     key=workspace_id,
                     title=workspace_labels.get(workspace_id, workspace_id),
-                    subtitle=branch or _clean(active_tab.get("label")),
+                    subtitle=branch or _tab_label(
+                        active_tab, active_tab.get("tab_id") in agents_by_tab),
                     workspace_id=workspace_id,
                     workspace_label=workspace_labels.get(workspace_id, ""),
                     status=_status_of(workspace),

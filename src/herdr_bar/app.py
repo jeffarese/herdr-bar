@@ -37,7 +37,6 @@ SCOPE_CHIPS = {
 }
 
 TITLE_BONUS = 40
-SPINNER_INTERVAL = 0.11
 PREVIEW_DEBOUNCE = 0.07
 PREVIEW_TTL = 1.5
 ESC_TIMEOUT = 0.04
@@ -119,7 +118,6 @@ class Bar(object):
         self.current_key: Optional[str] = None
         self.current_title = ""
 
-        self.tick = 0
         self.status: Optional[str] = None
         self.status_until = 0.0
         self.pending_close: Optional[Tuple[str, str, int]] = None
@@ -131,7 +129,6 @@ class Bar(object):
         self._ages: Dict[str, Optional[Tuple[float, float]]] = {}
         self._age_queue: List[str] = []
         self._last_refresh = 0.0
-        self._last_spin = 0.0
         self._dirty = True
         self._list_top = 2
         self._list_height = 10
@@ -819,7 +816,6 @@ class Bar(object):
                     self.rows[position],
                     content_width,
                     position == self.selected,
-                    self.tick,
                     show_workspace,
                     self.age_of(self.rows[position].item),
                 )
@@ -897,11 +893,6 @@ class Bar(object):
             now = time.monotonic()
             if now - self._last_refresh >= self.config.refresh_ms / 1000.0:
                 self.refresh()
-            if self.config.spinner and now - self._last_spin >= SPINNER_INTERVAL:
-                self._last_spin = now
-                if any(row.item.status == "working" for row in self.rows):
-                    self.tick += 1
-                    self._dirty = True
             self.pump_preview(self._list_height)
             self.pump_ages()
             if self.status and now >= self.status_until:
@@ -942,8 +933,6 @@ class Bar(object):
             # freshly drawn list fills in its times inside a few frames.
             return 0.01
         deadlines = [self._last_refresh + self.config.refresh_ms / 1000.0]
-        if self.config.spinner and any(row.item.status == "working" for row in self.rows):
-            deadlines.append(self._last_spin + SPINNER_INTERVAL)
         if self._preview_pending:
             deadlines.append(self._preview_pending[1])
         if escape_deadline is not None:

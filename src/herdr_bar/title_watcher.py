@@ -1,4 +1,4 @@
-"""One reconnecting background title watcher per Herdr server."""
+"""One reconnecting background watcher per Herdr server, for tab titles and status."""
 
 from __future__ import annotations
 
@@ -8,10 +8,12 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from .auto_title import AutoTitles, title_state_dir
-from .client import HerdrClient, HerdrError
+from .client import EventStream, HerdrClient, HerdrError
+from .config import Config
+from .tab_status import TabStatus
 
 INTERVAL = 2
 REGISTRATION_INTERVAL = 10
@@ -22,7 +24,9 @@ def start(resume: bool = False) -> None:
     """Best-effort launch; unavailable state storage must never break the popup."""
     titles = AutoTitles()
     directory = titles.state_dir
-    if not titles.enabled or directory is None or not os.environ.get("HERDR_SOCKET_PATH"):
+    if directory is None or not os.environ.get("HERDR_SOCKET_PATH"):
+        return
+    if not titles.enabled and not Config.load().tab_status:
         return
     try:
         directory.mkdir(parents=True, exist_ok=True)
@@ -65,7 +69,8 @@ def stop() -> None:
         (directory / "title-watcher.stopped").touch()
 
 
-def finish_if_stopped(lock, directory: Path) -> bool:
+def finish_if_stopped(lock, directory: Path,
+                      cleanup: Optional[Callable[[], None]] = None) -> bool:
     """Close the worker lock under the launch gate to make stop/resume atomic."""
     stopped = directory / "title-watcher.stopped"
     if not stopped.exists():
@@ -74,6 +79,9 @@ def finish_if_stopped(lock, directory: Path) -> bool:
         with (directory / "title-launch.lock").open("a") as gate:
             fcntl.flock(gate, fcntl.LOCK_EX)
             if stopped.exists():
+                # Still holding the lock, so no successor can decorate meanwhile.
+                if cleanup is not None:
+                    cleanup()
                 lock.close()
                 return True
     except OSError:
@@ -118,26 +126,45 @@ def watch(lock_fd: int) -> int:
     if titles.state_dir is None:
         os.close(lock_fd)
         return 0
+    tabs = TabStatus(client, titles.state_dir)
+    # Status changes arrive as events, so idle tabs cost no polling beyond titles.
+    events = EventStream(getattr(client, "socket_path", None))
     current_root = Path(__file__).resolve().parents[2]
     current_revision = revision(current_root)
     next_registration = 0.0
+    next_poll = 0.0
     delay = INTERVAL
     last_error = ""
     with os.fdopen(lock_fd, "a") as lock:
-        while titles.enabled:
-            if finish_if_stopped(lock, titles.state_dir):
+        while True:
+            if finish_if_stopped(lock, titles.state_dir, tabs.clear):
                 return 0
+            now = time.monotonic()
+            deadline = now + delay
             try:
-                now = time.monotonic()
                 if now >= next_registration:
                     root = registered_root(client)
                     if root is None:
+                        tabs.clear()
                         return 0
                     if root != current_root or revision(root) != current_revision:
                         replace(root, lock_fd)
                         return 0
                     next_registration = now + REGISTRATION_INTERVAL
-                titles.apply(client, client.snapshot())
+                if now >= next_poll:
+                    tabs.configure(Config.load())
+                    if not (titles.enabled or tabs.enabled or tabs.records):
+                        return 0
+                    snapshot = titles.apply(tabs, tabs.snapshot())
+                    next_poll = now + INTERVAL
+                else:
+                    snapshot = tabs.snapshot()
+                deadline = next_poll
+                tabs.apply(snapshot)
+                try:
+                    events.follow(tabs.subscriptions())
+                except HerdrError:
+                    pass  # e.g. a pane closed since the snapshot; polling covers it
                 delay = INTERVAL
                 last_error = ""
             except (HerdrError, OSError) as error:
@@ -148,12 +175,14 @@ def watch(lock_fd: int) -> int:
                     print("herdr-bar: title watcher retrying: %s" % message,
                           file=sys.stderr, flush=True)
                     last_error = message
-                next_registration = 0
+                events.close()
+                next_registration = next_poll = 0
                 delay = min(MAX_BACKOFF, delay * 2)
+                deadline = time.monotonic() + delay
             # An explicit stop is noticed even while reconnecting with backoff.
-            deadline = time.monotonic() + delay
             while time.monotonic() < deadline:
-                if finish_if_stopped(lock, titles.state_dir):
+                if finish_if_stopped(lock, titles.state_dir, tabs.clear):
                     return 0
-                time.sleep(min(1, max(0, deadline - time.monotonic())))
-    return 0
+                if events.wait(min(1, max(0, deadline - time.monotonic()))):
+                    next_poll = 0
+                    break

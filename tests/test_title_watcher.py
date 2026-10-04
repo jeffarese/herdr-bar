@@ -19,9 +19,11 @@ class WatcherTest(unittest.TestCase):
     def setUp(self):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
+        # Logos depend on fonts installed on the machine; keep labels deterministic.
+        Path(temp.name, "config.json").write_text('{"agent_icons": "none"}')
         self.env = patch.dict(os.environ, {
             "HERDR_PLUGIN_STATE_DIR": temp.name, "HERDR_SOCKET_PATH": temp.name + "/custom.sock",
-            "HERDR_AUTO_TITLE_TRANSCRIPT": "true",
+            "HERDR_AUTO_TITLE_TRANSCRIPT": "true", "HERDR_PLUGIN_CONFIG_DIR": temp.name,
         })
         self.env.start()
         self.addCleanup(self.env.stop)
@@ -129,7 +131,9 @@ class WatcherTest(unittest.TestCase):
                     patch.object(title_watcher.time, "sleep", side_effect=sleep), \
                     patch("sys.stderr"):
                 self.assertEqual(title_watcher.watch(os.dup(lock.fileno())), 0)
-        self.assertEqual([call[-1] for call in client.calls], ["First title", "After restart"])
+        # Status-led while watched, bare again once stopped.
+        self.assertEqual([call[-1] for call in client.calls],
+                         ["○ First title", "○ After restart", "After restart"])
 
     def test_disabled_plugin_exits_before_any_tab_operations(self):
         with tempfile.TemporaryFile() as lock:
@@ -178,6 +182,9 @@ class WatcherProcessTest(unittest.TestCase):
                         data["tabs"][0]["label"] = request["params"]["label"]
                         result = {}
                         renamed.set()
+                    elif method == "events.subscribe":
+                        self.wfile.write(b'{"error": {"message": "unsupported"}}\n')
+                        return
                     else:
                         raise AssertionError(method)
                     self.wfile.write(json.dumps({"result": result}).encode() + b"\n")
@@ -187,8 +194,10 @@ class WatcherProcessTest(unittest.TestCase):
             thread.start()
             processes = []
             try:
+                Path(temporary, "config.json").write_text('{"agent_icons": "none"}')
                 with patch.dict(os.environ, {"HERDR_SOCKET_PATH": socket_path,
                                              "HERDR_PLUGIN_STATE_DIR": temporary,
+                                             "HERDR_PLUGIN_CONFIG_DIR": temporary,
                                              "HERDR_AUTO_TITLE_TRANSCRIPT": "true"}):
                     original_spawn = subprocess.Popen
                     def launch(*args, **kwargs):
@@ -205,7 +214,7 @@ class WatcherProcessTest(unittest.TestCase):
                         self.assertTrue(renamed.wait(5), "watcher failed to rename")
                         title_watcher.start()
                         self.assertEqual(spawn.call_count, 1)
-                        self.assertEqual(data["tabs"][0]["label"], "Delayed task")
+                        self.assertEqual(data["tabs"][0]["label"], "○ Delayed task")
                         title_watcher.stop()
                     deadline = time.monotonic() + 5
                     with (directory / "title-watcher.lock").open("a") as lock:
@@ -217,6 +226,7 @@ class WatcherProcessTest(unittest.TestCase):
                                 if time.monotonic() >= deadline:
                                     self.fail("watcher did not release its lock after stop")
                                 time.sleep(0.02)
+                    self.assertEqual(data["tabs"][0]["label"], "Delayed task")
             finally:
                 # Also stop on assertion failures before deleting the state directory.
                 for marker in Path(temporary).glob("title-servers/*"):

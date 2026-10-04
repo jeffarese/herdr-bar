@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## 0.7.0
+
+- Show live agent status in the tab bar: agent tabs lead with the agent's logo
+  and a static status glyph. A tab is renamed only when its agent's status or
+  its name changes, driven by `events.subscribe`, so idle sessions cost no extra
+  polling. Configure with `tab_status`; stopping the watcher restores bare names.
+- Remove the working spinner and the `spinner` setting. Working shows a steady
+  `◐` in the bar and in tabs; animating tab labels cost a rename per frame,
+  around 6 per second per working tab.
+- The tab watcher notices a newly installed icon font within a minute.
+- Document installing the Herdr Agent Icons Max font without herdr-radar.
+- Preserve user-supplied leading glyphs after a failed tab rename or watcher restart.
+- Keep event reads bounded, preserve events delivered with the subscription
+  acknowledgement, and reconnect safely after invalid subscription responses.
+- Existing `spinner` and `tab_flash` configuration keys are ignored; status
+  glyphs remain static.
+
 ## 0.6.0
 
 - Add `claude_config_dirs` so auto titles find Claude transcripts written under

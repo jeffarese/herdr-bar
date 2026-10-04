@@ -61,12 +61,11 @@ DEFAULTS = {
     "agent_opencode": "#38BDF8",
 }
 
-SPINNER_FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
-
 # Mirrors herdr's agent_icon()/state_label_color() so the bar and the
 # sidebar agree at a glance.
 STATUS_GLYPHS = {
     "blocked": "◉",
+    "working": "◐",
     "done": "●",
     "idle": "✓",
     "unknown": "○",
@@ -128,9 +127,7 @@ class Theme(object):
     def status_color(self, status: str) -> str:
         return self.fg(status if status in self._fg else "unknown")
 
-    def status_glyph(self, status: str, tick: int) -> str:
-        if status == "working":
-            return SPINNER_FRAMES[tick % len(SPINNER_FRAMES)]
+    def status_glyph(self, status: str) -> str:
         return STATUS_GLYPHS.get(status, STATUS_GLYPHS["unknown"])
 
 

@@ -16,13 +16,13 @@ DEFAULTS: Dict[str, Any] = {
     # true | false (hidden until ^o) | "auto" (on when the popup is wide enough)
     "preview": "auto",
     "mouse": True,
-    "spinner": True,
     "agent_icons": "auto",  # "auto" | "font" | "none"
     "refresh_ms": 900,
     "workspaces": "auto",  # true | false | "auto" (on with more than one space)
     "colors": {},  # role -> "#rrggbb" | ansi name | 0-255
     "selection_background": "auto",  # "auto" | "none" | "#rrggbb" | 0-255
     "claude_config_dirs": [],  # extra CLAUDE_CONFIG_DIR roots holding transcripts
+    "tab_status": True,  # lead agent tab names with the vendor logo and status glyph
 }
 
 
@@ -32,7 +32,6 @@ class Config(object):
         merged.update(values or {})
         self.preview = merged.get("preview", "auto")
         self.mouse = bool(merged.get("mouse", True))
-        self.spinner = bool(merged.get("spinner", True))
         self.agent_icons = merged.get("agent_icons", "auto")
         try:
             self.refresh_ms = max(200, int(merged.get("refresh_ms", 900)))
@@ -46,6 +45,7 @@ class Config(object):
         self.claude_config_dirs = [
             value for value in dirs if isinstance(value, str) and value.strip()
         ] if isinstance(dirs, list) else []
+        self.tab_status = merged.get("tab_status") is not False
 
     @staticmethod
     def path(config_dir: Optional[str] = None) -> Optional[str]:

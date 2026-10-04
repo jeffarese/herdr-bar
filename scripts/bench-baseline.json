@@ -1,16 +1,16 @@
 {
   "metrics": {
-    "changed_frames": 92,
-    "emitted_bytes": 40347,
-    "frames": 92,
+    "changed_frames": 58,
+    "emitted_bytes": 39151,
+    "frames": 58,
     "idle_calls_per_s": 1.5,
-    "latency_p50_ms": 0.275,
-    "latency_p99_ms": 0.538,
-    "needed_bytes": 44785,
+    "latency_p50_ms": 0.486,
+    "latency_p99_ms": 1.122,
+    "needed_bytes": 42421,
     "null_frames": 0,
-    "paint_ratio": 1.11,
-    "scale_p50_ms": 2.225,
-    "scale_p99_ms": 2.826,
+    "paint_ratio": 1.0835,
+    "scale_p50_ms": 3.588,
+    "scale_p99_ms": 5.227,
     "unhandled_sequences": 0
   },
   "parts": {
@@ -18,19 +18,19 @@
     "io": 96.6,
     "latency": 100.0,
     "paint": 100.0,
-    "scale": 100.0
+    "scale": 93.9
   },
   "scenarios": {
     "idle": {
-      "bytes_per_frame": 33,
+      "bytes_per_frame": 8,
       "calls": 6,
-      "emitted_bytes": 1221,
-      "frames": 37,
-      "needed_bytes": 2434,
+      "emitted_bytes": 25,
+      "frames": 3,
+      "needed_bytes": 70,
       "null_frames": 0,
-      "p50_ms": 0.234,
-      "p99_ms": 0.271,
-      "paint_ratio": 1.9934
+      "p50_ms": 0.302,
+      "p99_ms": 0.37,
+      "paint_ratio": 2.8
     },
     "narrow": {
       "bytes_per_frame": 984,
@@ -39,8 +39,8 @@
       "frames": 5,
       "needed_bytes": 5318,
       "null_frames": 0,
-      "p50_ms": 0.491,
-      "p99_ms": 0.535,
+      "p50_ms": 0.753,
+      "p99_ms": 1.122,
       "paint_ratio": 1.0802
     },
     "navigate": {
@@ -50,8 +50,8 @@
       "frames": 22,
       "needed_bytes": 9460,
       "null_frames": 0,
-      "p50_ms": 0.275,
-      "p99_ms": 0.31,
+      "p50_ms": 0.41,
+      "p99_ms": 0.619,
       "paint_ratio": 1.0657
     },
     "open": {
@@ -61,8 +61,8 @@
       "frames": 1,
       "needed_bytes": 3343,
       "null_frames": 0,
-      "p50_ms": 0.525,
-      "p99_ms": 0.525,
+      "p50_ms": 1.095,
+      "p99_ms": 1.095,
       "paint_ratio": 0.757
     },
     "scale": {
@@ -72,8 +72,8 @@
       "frames": 7,
       "needed_bytes": 4351,
       "null_frames": 0,
-      "p50_ms": 2.225,
-      "p99_ms": 2.826,
+      "p50_ms": 3.588,
+      "p99_ms": 5.227,
       "paint_ratio": 1.1029
     },
     "scope": {
@@ -83,8 +83,8 @@
       "frames": 8,
       "needed_bytes": 6886,
       "null_frames": 0,
-      "p50_ms": 0.211,
-      "p99_ms": 0.393,
+      "p50_ms": 0.506,
+      "p99_ms": 0.785,
       "paint_ratio": 1.2547
     },
     "typing": {
@@ -94,10 +94,10 @@
       "frames": 12,
       "needed_bytes": 12993,
       "null_frames": 0,
-      "p50_ms": 0.376,
-      "p99_ms": 0.538,
+      "p50_ms": 0.587,
+      "p99_ms": 0.756,
       "paint_ratio": 1.1321
     }
   },
-  "score": 99.7
+  "score": 98.7
 }

@@ -237,7 +237,6 @@ def render_row(
     row: Row,
     width: int,
     selected: bool,
-    tick: int,
     show_workspace: bool,
     age: Optional[float] = None,
 ) -> str:
@@ -246,7 +245,7 @@ def render_row(
 
     marker = Segment("accent", SELECTED_BAR + " ") if selected else Segment("", "  ")
     glyph_role = item.status if item.status in ("blocked", "working", "done", "idle") else "unknown"
-    glyph = Segment(glyph_role, theme.status_glyph(item.status, tick) + " ")
+    glyph = Segment(glyph_role, theme.status_glyph(item.status) + " ")
     logo = logo_for(item.agent) if theme.agent_icons else ""
     leading = [marker]
     if logo:
