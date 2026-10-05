@@ -158,6 +158,9 @@ class AutoTitlesTest(unittest.TestCase):
         self.env = patch.dict(os.environ, {"HERDR_AUTO_TITLE_TRANSCRIPT": "true"})
         self.env.start()
         self.addCleanup(self.env.stop)
+        self.config = patch.object(Config, "load", return_value=Config({"auto_titles": True}))
+        self.config.start()
+        self.addCleanup(self.config.stop)
         self.titles = AutoTitles()
         self.title = patch.object(self.titles.reader, "title", return_value="Repair login").start()
         self.addCleanup(patch.stopall)
@@ -207,7 +210,7 @@ class AutoTitlesTest(unittest.TestCase):
                     self.assertEqual(self.client.calls[-1][-1], "Better task")
                     self.client._snapshot["tabs"][0]["label"] = "My choice"
                     self.apply()
-                    self.assertEqual(self.titles.owned, {})
+                    self.assertEqual(self.titles.owned, {"w1:t9": {"yielded": True}})
                     self.assertEqual(self.client._snapshot["tabs"][0]["label"], "My choice")
 
     def test_replacement_session_cannot_claim_a_previously_owned_name(self):
@@ -240,23 +243,26 @@ class AutoTitlesTest(unittest.TestCase):
         folder = os.path.basename(cwd.rstrip("/")).lower()
         for name in (folder, folder + "-2"):
             with self.subTest(name=name):
+                self.titles.owned = {}
                 self.client = FakeClient(snapshot())
                 self.client._snapshot["agents"][0]["name"] = name
                 self.apply()
                 self.assertEqual(self.client.calls, [("rename", "w1:t9", "Repair login")])
         for name in (folder + "-reviewer", folder[:1] + "-2", folder + "-1"):
             with self.subTest(name=name):
+                self.titles.owned = {}
                 self.client = FakeClient(snapshot())
                 self.client._snapshot["agents"][0]["name"] = name
                 self.apply()
                 self.assertEqual(self.client.calls, [])
 
-    def test_empty_name_opts_back_in(self):
+    def test_external_default_name_does_not_reclaim_ownership(self):
         self.apply()
         self.client._snapshot["tabs"][0]["label"] = ""
         self.title.return_value = "New task"
         self.apply()
-        self.assertEqual(self.client.calls[-1], ("rename", "w1:t9", "New task"))
+        self.assertEqual(len(self.client.calls), 1)
+        self.assertEqual(self.client._snapshot["tabs"][0]["label"], "")
 
     def test_workspace_positions_count_shell_tabs_and_reset_per_workspace(self):
         self.client._snapshot["tabs"].insert(0, {
@@ -311,6 +317,15 @@ class AutoTitlesTest(unittest.TestCase):
             read.assert_not_called()
         self.assertEqual(self.client.calls, [])
 
+    def test_config_can_disable_and_reenable_titles_without_restart(self):
+        self.titles.configure(Config({"auto_titles": False}))
+        self.apply()
+        self.assertEqual(self.client.calls, [])
+        self.title.assert_not_called()
+        self.titles.configure(Config({"auto_titles": True}))
+        self.apply()
+        self.assertEqual(self.client.calls[-1][-1], "Repair login")
+
     def test_popup_only_reads_titles_written_by_watcher(self):
         with tempfile.TemporaryDirectory() as root:
             projects = Path(root) / "projects" / "-work-app"
@@ -338,11 +353,23 @@ class NamingPersistenceTest(unittest.TestCase):
                                           "HERDR_SOCKET_PATH": "/test/server.sock"})
         self.env.start()
         self.addCleanup(self.env.stop)
+        self.config = patch.object(Config, "load", return_value=Config({"auto_titles": True}))
+        self.config.start()
+        self.addCleanup(self.config.stop)
         self.titles = AutoTitles()
         self.client = FakeClient(snapshot())
         agent = self.client._snapshot["agents"][0]
         agent["agent"] = agent["agent_session"]["agent"] = "codex"
         agent["terminal_title_stripped"] = "Task title | app"
+
+    def test_external_default_name_stays_unowned_after_restart(self):
+        self.titles.apply(self.client, self.client.snapshot())
+        self.client._snapshot["tabs"][0]["label"] = "1"
+        self.titles.apply(self.client, self.client.snapshot())
+        restarted = AutoTitles()
+        restarted.apply(self.client, self.client.snapshot())
+        self.assertEqual(len(self.client.calls), 1)
+        self.assertEqual(self.client._snapshot["tabs"][0]["label"], "1")
 
     def test_busy_lock_returns_without_server_requests_or_mutation(self):
         import fcntl

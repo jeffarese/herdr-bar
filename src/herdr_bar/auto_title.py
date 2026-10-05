@@ -200,6 +200,8 @@ def _candidates(
     for tab in snapshot.get("tabs", []):
         workspace = tab.get("workspace_id", "")
         positions[workspace] = positions.get(workspace, 0) + 1
+        if tab.get("title_conflict"):
+            continue
         agents = agents_by_tab.get(tab.get("tab_id"), [])
         if len(agents) != 1:
             continue
@@ -226,6 +228,8 @@ def _candidates(
         previous = owned.get(tab["tab_id"], {})
         if not isinstance(previous, dict):
             previous = {}
+        if previous.get("yielded"):
+            continue
         if tab.get("label") not in (None, "", str(positions[workspace])):
             if previous.get("identity") != identity or previous.get("title") != tab.get("label"):
                 continue
@@ -241,12 +245,14 @@ def _candidates(
 
 class AutoTitles:
     def __init__(self) -> None:
-        self.enabled = os.environ.get("HERDR_AUTO_TITLE_TRANSCRIPT", "true").lower() not in (
-            "0", "false", "no", "off",
-        )
+        self.configure(Config.load())
         self.reader = TranscriptReader()
         self.owned: Dict[str, Any] = {}
         self.state_dir = title_state_dir()
+
+    def configure(self, config: Config) -> None:
+        self.enabled = config.auto_titles and os.environ.get(
+            "HERDR_AUTO_TITLE_TRANSCRIPT", "true").lower() not in ("0", "false", "no", "off")
 
     def apply(self, client: HerdrClient, snapshot: Dict[str, Any]) -> Dict[str, Any]:
         if not self.enabled:
@@ -288,8 +294,14 @@ class AutoTitles:
     def _apply(
         self, client: HerdrClient, snapshot: Dict[str, Any], staging: Optional[Path] = None,
     ) -> Dict[str, Any]:
+        tabs = {tab["tab_id"]: tab for tab in snapshot.get("tabs", [])}
+        self.owned = {key: value for key, value in self.owned.items()
+                      if key in tabs and isinstance(value, dict)}
+        for tab_id, record in list(self.owned.items()):
+            tab = tabs[tab_id]
+            if record.get("yielded") or record.get("title") != tab.get("label"):
+                self.owned[tab_id] = {"yielded": True}
         candidates = _candidates(snapshot, self.owned)
-        self.owned = {key: value for key, value in self.owned.items() if key in candidates}
         live = {candidate["session"] for candidate in candidates.values()}
         self.reader.sessions = {
             key: value for key, value in self.reader.sessions.items() if key in live

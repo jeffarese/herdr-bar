@@ -8,6 +8,8 @@ from unittest.mock import Mock, patch
 from herdr_bar import title_watcher
 from herdr_bar.auto_title import AutoTitles, title_state_dir
 from herdr_bar.client import HerdrClient, HerdrError
+from herdr_bar.config import Config
+from herdr_bar.renaming_guard import RenamingPluginDetected
 
 from .test_app import FakeClient
 from .test_auto_title import snapshot
@@ -20,7 +22,8 @@ class WatcherTest(unittest.TestCase):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
         # Logos depend on fonts installed on the machine; keep labels deterministic.
-        Path(temp.name, "config.json").write_text('{"agent_icons": "none"}')
+        Path(temp.name, "config.json").write_text(
+            '{"agent_icons": "none", "auto_titles": true, "tab_status": true}')
         self.env = patch.dict(os.environ, {
             "HERDR_PLUGIN_STATE_DIR": temp.name, "HERDR_SOCKET_PATH": temp.name + "/custom.sock",
             "HERDR_AUTO_TITLE_TRANSCRIPT": "true", "HERDR_PLUGIN_CONFIG_DIR": temp.name,
@@ -29,6 +32,34 @@ class WatcherTest(unittest.TestCase):
         self.addCleanup(self.env.stop)
         self.directory = title_state_dir()
         self.directory.mkdir(parents=True)
+
+    def test_default_config_does_not_start_a_watcher(self):
+        with patch.object(Config, "load", return_value=Config()), \
+                patch.object(title_watcher.subprocess, "Popen") as spawn:
+            title_watcher.start()
+            spawn.assert_not_called()
+
+    def test_disabling_both_features_restores_owned_prefix_and_exits(self):
+        client = FakeClient(snapshot())
+        client.call = Mock(return_value={"plugins": []})
+        clock = [0.0]
+        config = Config({"tab_status": True, "agent_icons": "none"})
+
+        def sleep(seconds):
+            clock[0] += seconds
+            if clock[0] >= 2:
+                config.tab_status = False
+            if clock[0] > 5:
+                self.fail("watcher did not exit after both features were disabled")
+
+        with tempfile.TemporaryFile() as lock:
+            with patch.object(title_watcher, "HerdrClient", return_value=client), \
+                    patch.object(Config, "load", return_value=config), \
+                    patch.object(title_watcher, "registered_root", return_value=ROOT), \
+                    patch.object(title_watcher.time, "monotonic", side_effect=lambda: clock[0]), \
+                    patch.object(title_watcher.time, "sleep", side_effect=sleep):
+                self.assertEqual(title_watcher.watch(os.dup(lock.fileno())), 0)
+        self.assertEqual([call[-1] for call in client.calls], ["○ 1", "1"])
 
     def test_repeated_start_does_not_spawn_another_watcher(self):
         with (self.directory / "title-watcher.lock").open("a") as lock:
@@ -89,6 +120,21 @@ class WatcherTest(unittest.TestCase):
         with self.assertRaises(HerdrError):
             title_watcher.registered_root(client)
 
+    def test_enabled_naming_plugin_prevents_all_tab_operations(self):
+        client = Mock()
+        client.call.return_value = {"plugins": [
+            {"plugin_id": "herdr-bar", "enabled": True, "plugin_root": str(ROOT)},
+            {"plugin_id": "herdr.auto-title", "enabled": True},
+        ]}
+        with self.assertRaises(RenamingPluginDetected):
+            title_watcher.registered_root(client)
+        with tempfile.TemporaryFile() as lock:
+            with patch.object(title_watcher, "HerdrClient", return_value=client), \
+                    patch("sys.stderr"):
+                self.assertEqual(title_watcher.watch(os.dup(lock.fileno())), 0)
+        client.snapshot.assert_not_called()
+        client.rename_tab.assert_not_called()
+
     def test_socket_only_reconnects_and_never_falls_back_to_cli(self):
         client = HerdrClient(socket_only=True)
         with patch.object(client, "_socket_call", side_effect=[
@@ -109,6 +155,7 @@ class WatcherTest(unittest.TestCase):
 
     def test_watcher_recovers_after_server_restart_without_opening_popup(self):
         client = FakeClient(snapshot())
+        client.call = Mock(return_value={"plugins": []})
         agent = client._snapshot["agents"][0]
         agent["agent"] = agent["agent_session"]["agent"] = "codex"
         agent["terminal_title_stripped"] = "First title | app"
@@ -194,7 +241,8 @@ class WatcherProcessTest(unittest.TestCase):
             thread.start()
             processes = []
             try:
-                Path(temporary, "config.json").write_text('{"agent_icons": "none"}')
+                Path(temporary, "config.json").write_text(
+                    '{"agent_icons": "none", "auto_titles": true, "tab_status": true}')
                 with patch.dict(os.environ, {"HERDR_SOCKET_PATH": socket_path,
                                              "HERDR_PLUGIN_STATE_DIR": temporary,
                                              "HERDR_PLUGIN_CONFIG_DIR": temporary,

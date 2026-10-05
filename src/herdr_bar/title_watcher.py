@@ -13,6 +13,12 @@ from typing import Callable, Optional
 from .auto_title import AutoTitles, title_state_dir
 from .client import EventStream, HerdrClient, HerdrError
 from .config import Config
+from .renaming_guard import (
+    AutomaticTabClient,
+    RenamingPluginDetected,
+    check_plugins,
+    installed_plugins,
+)
 from .tab_status import TabStatus
 
 INTERVAL = 2
@@ -27,7 +33,9 @@ def start(resume: bool = False) -> None:
     if directory is None or not os.environ.get("HERDR_SOCKET_PATH"):
         return
     if not titles.enabled and not Config.load().tab_status:
-        return
+        records = TabStatus(HerdrClient(socket_only=True), directory).records
+        if not any(not record.get("yielded") for record in records.values()):
+            return
     try:
         directory.mkdir(parents=True, exist_ok=True)
         with (directory / "title-launch.lock").open("a") as gate:
@@ -91,10 +99,8 @@ def finish_if_stopped(lock, directory: Path,
 
 def registered_root(client: HerdrClient) -> Optional[Path]:
     """Ask the server, including in named sessions and custom socket locations."""
-    result = client.call("plugin.list", {}, ["plugin", "list"])
-    plugins = result.get("plugins")
-    if not isinstance(plugins, list):
-        raise HerdrError("plugin.list did not return a plugin list")
+    plugins = installed_plugins(client)
+    check_plugins(plugins, Config.load().tab_renaming_plugins)
     for plugin in plugins:
         if isinstance(plugin, dict) and plugin.get("plugin_id") == "herdr-bar":
             if not plugin.get("enabled"):
@@ -126,7 +132,8 @@ def watch(lock_fd: int) -> int:
     if titles.state_dir is None:
         os.close(lock_fd)
         return 0
-    tabs = TabStatus(client, titles.state_dir)
+    writer = AutomaticTabClient(client)
+    tabs = TabStatus(writer, titles.state_dir)
     # Status changes arrive as events, so idle tabs cost no polling beyond titles.
     events = EventStream(getattr(client, "socket_path", None))
     current_root = Path(__file__).resolve().parents[2]
@@ -152,8 +159,12 @@ def watch(lock_fd: int) -> int:
                         return 0
                     next_registration = now + REGISTRATION_INTERVAL
                 if now >= next_poll:
-                    tabs.configure(Config.load())
-                    if not (titles.enabled or tabs.enabled or tabs.records):
+                    config = Config.load()
+                    titles.configure(config)
+                    tabs.configure(config)
+                    if not (titles.enabled or tabs.enabled):
+                        tabs.clear()
+                        events.close()
                         return 0
                     snapshot = titles.apply(tabs, tabs.snapshot())
                     next_poll = now + INTERVAL
@@ -161,12 +172,19 @@ def watch(lock_fd: int) -> int:
                     snapshot = tabs.snapshot()
                 deadline = next_poll
                 tabs.apply(snapshot)
+                if writer.conflict:
+                    raise RenamingPluginDetected(writer.conflict)
                 try:
                     events.follow(tabs.subscriptions())
                 except HerdrError:
                     pass  # e.g. a pane closed since the snapshot; polling covers it
                 delay = INTERVAL
                 last_error = ""
+            except RenamingPluginDetected as error:
+                # Do not even restore our prefixes: another writer owns names now.
+                print("herdr-bar: %s" % error, file=sys.stderr, flush=True)
+                events.close()
+                return 0
             except (HerdrError, OSError) as error:
                 # Stay available across server shutdown/restart. Never fall back
                 # to a CLI that might address a different server or spawn one.

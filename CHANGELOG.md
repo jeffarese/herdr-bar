@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.7.1
+
+- Skip all automatic tab writes, including cleanup, while a recognized naming
+  plugin is enabled. Support additional IDs through `tab_renaming_plugins`.
+- Fix competing tab-renaming loops (#9): yield externally changed labels across
+  watcher restarts, and restore only status labels still owned by this plugin.
+- Make task titles (`auto_titles`) and status prefixes (`tab_status`) separate,
+  opt-in settings, both disabled by default. Reload settings while watching and
+  exit after both are disabled; the command bar works without either feature.
+
 ## 0.7.0
 
 - Show live agent status in the tab bar: agent tabs lead with the agent's logo

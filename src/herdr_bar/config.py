@@ -22,7 +22,9 @@ DEFAULTS: Dict[str, Any] = {
     "colors": {},  # role -> "#rrggbb" | ansi name | 0-255
     "selection_background": "auto",  # "auto" | "none" | "#rrggbb" | 0-255
     "claude_config_dirs": [],  # extra CLAUDE_CONFIG_DIR roots holding transcripts
-    "tab_status": True,  # lead agent tab names with the vendor logo and status glyph
+    "tab_renaming_plugins": [],  # additional plugin IDs that own tab names
+    "auto_titles": False,  # opt in to task-based tab naming
+    "tab_status": False,  # lead agent tab names with the vendor logo and status glyph
 }
 
 
@@ -45,7 +47,12 @@ class Config(object):
         self.claude_config_dirs = [
             value for value in dirs if isinstance(value, str) and value.strip()
         ] if isinstance(dirs, list) else []
-        self.tab_status = merged.get("tab_status") is not False
+        renamers = merged.get("tab_renaming_plugins")
+        self.tab_renaming_plugins = [
+            value for value in renamers if isinstance(value, str) and value.strip()
+        ] if isinstance(renamers, list) else []
+        self.auto_titles = merged.get("auto_titles") is True
+        self.tab_status = merged.get("tab_status") is True
 
     @staticmethod
     def path(config_dir: Optional[str] = None) -> Optional[str]:

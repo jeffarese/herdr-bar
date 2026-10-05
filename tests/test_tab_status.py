@@ -88,7 +88,7 @@ class TabStatusTest(unittest.TestCase):
     def make(self, data, **config):
         server = Server(data)
         tabs = TabStatus(server, self.directory)
-        tabs.configure(Config({"agent_icons": "none", **config}))
+        tabs.configure(Config({"agent_icons": "none", "tab_status": True, **config}))
         return server, tabs
 
     def tick(self, tabs):
@@ -138,23 +138,55 @@ class TabStatusTest(unittest.TestCase):
         self.tick(tabs)
         self.assertEqual(server.label(), "2", "still numbered like an unnamed tab")
 
-    def test_user_names_are_kept_and_decorated(self):
+    def test_external_rename_yields_across_status_changes_and_restart(self):
         server, tabs = self.make(session())
         self.tick(tabs)
         server.data["tabs"][1]["label"] = "Release notes"
+        for status in ("working", "done", "idle"):
+            server.data["agents"][0]["agent_status"] = status
+            self.tick(tabs)
+        restarted = TabStatus(server, self.directory)
+        restarted.configure(Config({"tab_status": True, "agent_icons": "none"}))
+        self.tick(restarted)
+        restarted.clear()
+        self.assertEqual(server.label(), "Release notes")
+        self.assertEqual(server.renames, [("w1:t2", "◐ 2")])
+
+    def test_competing_plugin_restoring_original_name_does_not_loop(self):
+        server, tabs = self.make(session("working", "Fix login"))
         self.tick(tabs)
-        self.assertEqual(server.label(), "◐ Release notes")
-        # Editing a shown name in place keeps the edit, not the old prefix.
-        server.data["tabs"][1]["label"] = "◐ Release notes v2"
+        saved = json.loads((self.directory / "tab-status.json").read_text())
+        self.assertNotIn("previous", saved["w1:t2"])
+        tabs = TabStatus(server, self.directory)
+        tabs.configure(Config({"tab_status": True, "agent_icons": "none"}))
+        for _ in range(5):
+            server.data["tabs"][1]["label"] = "Fix login"
+            self.tick(tabs)
+        self.assertEqual(server.renames, [("w1:t2", "◐ Fix login")])
+        self.assertEqual(server.label(), "Fix login")
+
+    def test_disable_and_stop_do_not_strip_another_writers_glyph(self):
+        for cleanup in ("disable", "stop"):
+            with self.subTest(cleanup=cleanup):
+                server, tabs = self.make(session("working", "Fix login"))
+                self.tick(tabs)
+                server.data["tabs"][1]["label"] = "✓ Other plugin"
+                if cleanup == "disable":
+                    tabs.configure(Config({"tab_status": False}))
+                    self.tick(tabs)
+                else:
+                    tabs.clear()
+                self.assertEqual(server.label(), "✓ Other plugin")
+                self.assertLessEqual(len(server.renames), 1)
+
+    def test_external_rename_between_snapshot_and_write_is_respected(self):
+        server, tabs = self.make(session("working", "Fix login"))
+        snapshot = tabs.snapshot()
+        server.data["tabs"][1]["label"] = "Other plugin"
+        tabs.apply(snapshot)
         self.tick(tabs)
-        self.assertEqual(server.label(), "◐ Release notes v2")
-        del server.data["tabs"][0]
-        self.tick(tabs)
-        self.assertEqual(server.label(), "◐ Release notes v2", "a chosen name never renumbers")
-        server.data["agents"].clear()
-        self.tick(tabs)
-        self.assertEqual(server.label(), "Release notes v2")
-        self.assertEqual(tabs.records, {})
+        self.assertEqual(server.label(), "Other plugin")
+        self.assertEqual(server.renames, [])
 
     def test_glyph_led_names_on_unrecorded_tabs_are_not_stripped(self):
         data = session("idle", "● pinned")
@@ -188,11 +220,11 @@ class TabStatusTest(unittest.TestCase):
 
     def test_an_animated_label_settles_in_one_rename(self):
         server, tabs = self.make(session("working", "Fix"))
-        self.tick(tabs)
+        tabs._save({"w1:t2": {"base": "Fix", "default": False}})
         server.data["tabs"][1]["label"] = "⠸ Fix"  # left behind by the animated release
         self.tick(tabs)
         self.tick(tabs)
-        self.assertEqual(server.renames[1:], [("w1:t2", "◐ Fix")])
+        self.assertEqual(server.renames, [("w1:t2", "◐ Fix")])
 
     def test_disabling_and_clearing_restore_bare_names(self):
         server, tabs = self.make(session("working", "Fix"))
@@ -200,7 +232,7 @@ class TabStatusTest(unittest.TestCase):
         tabs.configure(Config({"tab_status": False}))
         self.tick(tabs)
         self.assertEqual(server.label(), "Fix")
-        tabs.configure(Config({}))
+        tabs.configure(Config({"tab_status": True}))
         self.tick(tabs)
         tabs.clear()
         self.assertEqual(server.label(), "Fix")
@@ -229,7 +261,7 @@ class TabStatusTest(unittest.TestCase):
         self.tick(tabs)
         server.fail_rename = False
         restarted = TabStatus(server, self.directory)
-        restarted.configure(Config({"agent_icons": "none"}))
+        restarted.configure(Config({"agent_icons": "none", "tab_status": True}))
         self.tick(restarted)
         self.assertEqual(server.label(), "◐ ● pinned")
         restarted.clear()
@@ -245,12 +277,27 @@ class TabStatusTest(unittest.TestCase):
         with patch.dict(os.environ, {"HERDR_PLUGIN_STATE_DIR": str(self.directory),
                                      "HERDR_AUTO_TITLE_TRANSCRIPT": "true"}):
             titles = AutoTitles()
+            titles.configure(Config({"auto_titles": True}))
         tabs.apply(titles.apply(tabs, tabs.snapshot()))
         self.assertEqual(server.renames, [("w1:t2", "◐ Repair OAuth")])
         # Ownership sees the bare title, so later task titles keep flowing.
         agent["terminal_title_stripped"] = "Repair OAuth callbacks | app"
         tabs.apply(titles.apply(tabs, tabs.snapshot()))
         self.assertEqual(server.label(), "◐ Repair OAuth callbacks")
+
+    def test_conflict_blocks_task_titles_even_if_other_plugin_restores_a_number(self):
+        data = session("working", "2")
+        data["agents"][0].update(agent="codex", terminal_title_stripped="Repair OAuth | app",
+                                agent_session={"agent": "codex", "kind": "id", "value": SESSION})
+        server, tabs = self.make(data)
+        titles = AutoTitles()
+        titles.configure(Config({"auto_titles": True}))
+        tabs.apply(titles.apply(tabs, tabs.snapshot()))
+        server.data["tabs"][1]["label"] = "2"
+        for _ in range(3):
+            tabs.apply(titles.apply(tabs, tabs.snapshot()))
+        self.assertEqual(server.renames, [("w1:t2", "◐ Repair OAuth")])
+        self.assertEqual(server.label(), "2")
 
     def test_subscriptions_follow_agent_panes_only(self):
         _, tabs = self.make(session())
@@ -274,8 +321,12 @@ class BarStripTest(unittest.TestCase):
 
 class ConfigTest(unittest.TestCase):
     def test_defaults_and_bad_values(self):
-        self.assertTrue(Config().tab_status)
-        self.assertFalse(Config({"tab_status": False}).tab_status)
+        self.assertFalse(Config().tab_status)
+        self.assertFalse(Config().auto_titles)
+        for key in ("tab_status", "auto_titles"):
+            self.assertTrue(getattr(Config({key: True}), key))
+            for value in (False, "true", 1, None):
+                self.assertFalse(getattr(Config({key: value}), key))
 
 
 class EventStreamTest(unittest.TestCase):

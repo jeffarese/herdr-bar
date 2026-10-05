@@ -3,9 +3,10 @@
 Herdr tab labels are plain text, so the status lives in the label itself:
 ``<logo>  <glyph> <name>``. Glyphs are static: a tab is renamed only when its
 agent's status or its name changes, never on a timer. Only tabs recorded here
-are ever stripped, so a name that merely starts with a glyph stays exactly as
-typed. A record is written before its tab's first decorated label and dropped
-only after the bare name is back.
+are ever stripped, and externally changed labels are yielded for the rest
+of the tab's lifetime, including across watcher restarts. A record is written
+before its tab's first decorated label and dropped only after the bare name
+is back or the tab closes.
 
 Herdr numbers unnamed tabs by position, and a rename cannot hand that back.
 Decorated tabs that started unnamed therefore keep following their position
@@ -101,7 +102,7 @@ class TabStatus:
         if not isinstance(saved, dict):
             return {}
         return {
-            tab_id: {"base": record["base"], "default": record.get("default") is True}
+            tab_id: dict(record, default=record.get("default") is True)
             for tab_id, record in saved.items()
             if isinstance(record, dict) and isinstance(record.get("base"), str)
         }
@@ -133,13 +134,32 @@ class TabStatus:
             tab["position"] = str(positions[workspace])
             record = self.records.get(tab.get("tab_id"))
             if record is not None:
-                # Ownership is saved before the rename. A refused write (or a
-                # crash between the two) leaves the original name on the tab;
-                # it must not lose a user-supplied leading status glyph.
-                base = label if label == record["base"] else strip(label)
-                # A changed name is somebody's choice; an unchanged default follows its position.
-                tab["default"] = record["default"] and base == record["base"]
-                tab["label"] = tab["position"] if tab["default"] else base
+                if record.get("yielded"):
+                    tab["title_conflict"] = True
+                    continue
+                written = record.get("written")
+                if written is None:
+                    # Older releases recorded only the base. Adopt a prefix
+                    # only when removing it gives that exact recorded base.
+                    if label == record["base"] or strip(label) == record["base"]:
+                        record = dict(record, written=label)
+                        self._save({**self.records, tab["tab_id"]: record})
+                    else:
+                        self._yield(tab["tab_id"], label)
+                        tab["title_conflict"] = True
+                        continue
+                elif label not in (written, record.get("previous")):
+                    self._yield(tab["tab_id"], label)
+                    tab["title_conflict"] = True
+                    continue
+                if label == record.get("previous"):
+                    # A refused or interrupted write still shows the old label.
+                    base = record["previous_base"]
+                    default = record.get("previous_default", False)
+                else:
+                    base, default = record["base"], record["default"]
+                tab["default"] = default
+                tab["label"] = tab["position"] if default else base
         self.states = tab_states(snapshot)
         self.latest = snapshot
         return snapshot
@@ -158,26 +178,49 @@ class TabStatus:
         status, kind = state
         return compose(base, status, icons.logo_for(kind) if self.logos else "")
 
+    def _yield(self, tab_id: str, label: str) -> None:
+        """Remember another writer took over, including across watcher restarts."""
+        self._save({**self.records, tab_id: {
+            "base": label, "default": False, "yielded": True,
+        }})
+
     def _sync(self, tab: Dict[str, Any], base: str, label: str) -> None:
-        """Rename to ``label``, keeping the record able to strip it again."""
+        """Rename only a label we still own, recording pending writes first."""
         tab_id = tab["tab_id"]
+        if tab.get("title_conflict") or self.records.get(tab_id, {}).get("yielded"):
+            raise HerdrError("tab name changed by another writer")
+        changing = label != tab.get("shown")
+        if changing:
+            current = next((item for item in self.client.snapshot().get("tabs", [])
+                            if item.get("tab_id") == tab_id), None)
+            if current is None:
+                raise HerdrError("tab closed before rename")
+            if current.get("label") != tab.get("shown"):
+                self._yield(tab_id, current.get("label") or "")
+                raise HerdrError("tab name changed before rename")
         records = dict(self.records)
         default = base == tab.get("position") and (
             tab.get("default", False) or tab_id not in self.records)
         if label != base or (tab_id in self.records and default):
-            records[tab_id] = {"base": base, "default": default}
+            record = {"base": base, "default": default, "written": label}
+            if changing:
+                record.update(previous=tab.get("shown"), previous_base=tab.get("label", base),
+                              previous_default=tab.get("default", default))
+            records[tab_id] = record
+            # If ownership cannot be saved, do not risk an untracked rename.
+            self._save(records)
         else:
             records.pop(tab_id, None)
-        if tab_id in records:
-            try:
-                self._save(records)
-            except OSError:
-                if tab_id not in self.records:
-                    label = base  # an unrecorded prefix could never be removed again
-        if label != tab.get("shown"):
+        if changing:
             self.client.rename_tab(tab_id, label)
             tab["shown"] = label
-        if tab_id not in records:
+        if tab_id in records:
+            # Successful writes must not accept a later reversion to the old
+            # name as a failed write; that is another writer taking over.
+            self._save({**records, tab_id: {
+                "base": base, "default": default, "written": label,
+            }})
+        else:
             self._forget(tab_id)
 
     def apply(self, snapshot: Dict[str, Any]) -> None:
@@ -188,12 +231,14 @@ class TabStatus:
             if not isinstance(tab_id, str) or not isinstance(base, str):
                 continue
             live.add(tab_id)
+            if tab.get("title_conflict"):
+                continue
             label = self._desired(tab_id, base)
             if label == tab.get("shown", base) and tab_id not in self.records:
                 continue
             try:
                 self._sync(tab, base, label)
-            except HerdrError:
+            except (HerdrError, OSError):
                 continue
         self._forget(*(set(self.records) - live))
 
@@ -211,16 +256,15 @@ class TabStatus:
             return
         try:
             snapshot = self.snapshot()
-        except HerdrError:
+        except (HerdrError, OSError):
             return
         for tab in snapshot.get("tabs", []):
             tab_id = tab.get("tab_id")
-            if tab_id not in self.records:
+            if tab_id not in self.records or tab.get("title_conflict"):
                 continue
             try:
-                if tab.get("shown") != tab["label"]:
-                    self.client.rename_tab(tab_id, tab["label"])
-            except HerdrError:
+                self._sync(tab, tab["label"], tab["label"])
+            except (HerdrError, OSError):
                 continue
             self._forget(tab_id)
         self._forget(*(set(self.records) - {tab.get("tab_id") for tab in snapshot.get("tabs", [])}))
