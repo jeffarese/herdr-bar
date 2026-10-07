@@ -322,7 +322,7 @@ class BarStripTest(unittest.TestCase):
 class ConfigTest(unittest.TestCase):
     def test_defaults_and_bad_values(self):
         self.assertFalse(Config().tab_status)
-        self.assertFalse(Config().auto_titles)
+        self.assertTrue(Config().auto_titles)
         for key in ("tab_status", "auto_titles"):
             self.assertTrue(getattr(Config({key: True}), key))
             for value in (False, "true", 1, None):

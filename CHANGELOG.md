@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.7.2
+
+- Enable automatic task titles by default when no competing naming plugin is
+  detected. Preserve explicit `auto_titles: false`; status prefixes remain opt-in.
+- Use terminal task titles even when Herdr has no agent session ID, with
+  ownership tied to the pane and terminal. Claude transcript fallback still
+  requires a session ID.
+
 ## 0.7.1
 
 - Skip all automatic tab writes, including cleanup, while a recognized naming

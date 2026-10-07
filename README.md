@@ -9,9 +9,10 @@ quick switcher, for the terminal.
 
 ![Herdr command bar with auto tab titles, Claude and Codex agent icons, and fuzzy search](assets/demo.gif)
 
-- **optional auto title for unnamed tabs** — follows Claude and Codex task titles to
+- **automatic titles for unnamed tabs** — follows Claude and Codex task titles to
   replace default tab numbers with the task title. Existing tab names, named
   panes and named agents stay yours, including names set by another plugin.
+  Enabled by default when no competing naming plugin is detected.
 - **recognizable agent icons** — Claude, Codex, Pi, Grok, Kimi, Gemini, Cursor
   and OpenCode have distinct marks and colors. With the Herdr Agent Icons Max
   font installed, vendor logos lead each agent row, as shown in the demo.
@@ -61,23 +62,26 @@ Requires herdr 0.9.0+ (startup hooks and agent session metadata), Python 3.9+
 on PATH, and macOS or Linux. Herdr refuses to install the plugin on anything
 older, so there is nothing to get wrong.
 
-## Optional tab updates
+## Automatic tab updates
 
-Tab updates are **off by default**. The command bar, search, agent icons and
-manual `ctrl+r` renaming work without a background watcher. To opt in, set
-these independent switches in your [config](#configuring):
+Automatic task titles are **on by default**, unless another enabled tab-renaming
+plugin is detected. Status prefixes remain off by default. These independent
+switches in your [config](#configuring) control the two features:
 
 ```json
 {
   "auto_titles": true,
-  "tab_status": true
+  "tab_status": false
 }
 ```
 
-Then open the bar or run `herdr plugin action invoke herdr-bar.start-titles`.
-Set either switch to `false` to disable that feature. A running watcher reloads
+Set `"auto_titles": false` to opt out of task naming, or `"tab_status": true`
+to enable status prefixes. An explicit `false` is preserved across upgrades.
+Open the bar or run `herdr plugin action invoke herdr-bar.start-titles` to start
+the watcher in an already running server. A running watcher reloads
 these settings every two seconds; disabling both restores status prefixes it
-still owns and exits. Task titles already written are kept.
+still owns and exits. Task titles already written are kept. The command bar,
+search, agent icons and manual `ctrl+r` renaming work with both features off.
 
 **Other naming plugins take priority.** If another enabled renaming plugin is
 recognized, herdr-bar skips all automatic tab changes even when these switches
@@ -91,7 +95,7 @@ source repositories. Herdr does not expose a standard renaming capability, so
 custom plugins with unrelated metadata must be listed by ID in
 `"tab_renaming_plugins": ["my.private-renamer"]`. Disabled plugins do not block
 updates. After disabling a competing plugin, open the bar or start the watcher
-again to use the features you opted into.
+again to resume the enabled features.
 
 As a fallback for unrecognized writers, herdr-bar also yields a tab after a user
 or another plugin changes a label it wrote. That decision survives watcher restarts and lasts until the tab closes;
@@ -100,7 +104,7 @@ strips a prefix from a label it has detected as belonging to another writer.
 
 ## Auto title: automatic tab naming
 
-With `"auto_titles": true`, unnamed Claude and Codex tabs pick up their agent's
+With `"auto_titles": true` (the default), unnamed Claude and Codex tabs pick up their agent's
 task title automatically, even while the bar is closed. The watcher checks every two seconds and follows
 later task-title changes. Codex's trailing ` | folder` is removed; a bare folder
 or agent name is ignored until a task title is available. Claude's local
@@ -124,18 +128,19 @@ useful terminal title yet. No extra model requests are made.
   naming for this server; event hooks and popup opens leave it stopped until
   you invoke `herdr-bar.start-titles` again. Disabling or uninstalling the
   plugin stops its connected watchers within ten seconds.
-- **Local sources.** Requires Herdr to report the Claude or Codex session ID.
-  Claude transcript fallback searches Herdr's `CLAUDE_CONFIG_DIR` (default
+- **Local sources.** Terminal task titles work even when Herdr has no agent
+  session ID, with ownership tied to the pane and terminal. Claude transcript
+  fallback requires a session ID and searches Herdr's `CLAUDE_CONFIG_DIR` (default
   `~/.claude`) plus any `claude_config_dirs` in the [config](#configuring).
 - **Several Claude config directories.** If you run Claude with different
   `CLAUDE_CONFIG_DIR` values (separate accounts, say), Herdr's Claude hook must
   be installed in each one, or those tabs report no session ID:
   `CLAUDE_CONFIG_DIR=<dir> herdr integration install claude`, then restart or
   resume those sessions. List the same directories in `claude_config_dirs`.
-- **Opting out.** Set `HERDR_AUTO_TITLE_TRANSCRIPT=false` in Herdr's environment before starting
-  it as an additional override to disable automatic naming. `auto_titles` must
-  still be enabled in the config to opt in. The standalone Auto Title plugin's
-  `config.env` is not read.
+- **Opting out.** Set `"auto_titles": false` in the plugin config to disable
+  automatic naming. `HERDR_AUTO_TITLE_TRANSCRIPT=false` in Herdr's environment
+  before starting it remains an additional override. The standalone Auto Title
+  plugin's `config.env` is not read.
 
 Herdr exposes the current name rather than its author: a manual name equal to
 the tab's default position number is indistinguishable from an unnamed tab.
@@ -336,7 +341,7 @@ Optional. Write `config.json` in the plugin config directory
 | `selection_background` | `"auto"` | `"auto"` asks the terminal for its background color, or set `"none"`, a hex value, or a 0-255 ANSI index |
 | `claude_config_dirs` | `[]` | extra Claude config directories (`"~/.claude-work"`) whose transcripts supply tab titles; changes apply without a restart |
 | `tab_renaming_plugins` | `[]` | additional plugin IDs that suppress all automatic tab writes when enabled |
-| `auto_titles` | `false` | opt in to Claude and Codex task titles for unnamed tabs |
+| `auto_titles` | `true` | Claude and Codex task titles for unnamed tabs, suppressed by competing naming plugins; `false` opts out |
 | `tab_status` | `false` | opt in to agent logos and status glyphs in tab names; `false` restores labels still owned by the watcher |
 | `colors` | `{}` | role → `#rrggbb`, an ANSI name (`bright_blue`), or 0-255. Roles: `accent`, `match`, `text`, `muted`, `blocked`, `working`, `done`, `idle`, `unknown`, plus `agent_claude`, `agent_codex`, `agent_pi`, `agent_grok`, `agent_kimi`, `agent_gemini`, `agent_cursor`, `agent_opencode` |
 

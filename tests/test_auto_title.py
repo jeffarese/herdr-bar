@@ -213,11 +213,95 @@ class AutoTitlesTest(unittest.TestCase):
                     self.assertEqual(self.titles.owned, {"w1:t9": {"yielded": True}})
                     self.assertEqual(self.client._snapshot["tabs"][0]["label"], "My choice")
 
+    def test_terminal_titles_without_session_ids_follow_updates(self):
+        for kind in ("codex", "claude"):
+            with self.subTest(kind=kind):
+                self.titles.owned = {}
+                self.client = FakeClient(snapshot())
+                agent = self.client._snapshot["agents"][0]
+                agent.pop("agent_session")
+                agent["agent"] = kind
+                agent["terminal_title_stripped"] = "Repair login | app"
+                self.apply()
+                self.assertEqual(self.client.calls[-1][-1], "Repair login")
+                agent["terminal_title_stripped"] = "Updated task | app"
+                self.apply()
+                self.assertEqual(self.client.calls[-1][-1], "Updated task")
+        self.title.assert_not_called()
+
+    def test_sessionless_titles_require_terminal_identity_and_preserve_custom_names(self):
+        for group, key, value in (("panes", "terminal_id", None),
+                                  ("tabs", "label", "My name"),
+                                  ("panes", "label", "My pane"),
+                                  ("agents", "name", "My agent"),
+                                  ("agents", "terminal_title_stripped", "app")):
+            with self.subTest(group=group, key=key):
+                self.client = FakeClient(snapshot())
+                agent = self.client._snapshot["agents"][0]
+                agent.pop("agent_session")
+                agent["terminal_title_stripped"] = "Task | app"
+                self.client._snapshot[group][0][key] = value
+                self.apply()
+                self.assertEqual(self.client.calls, [])
+        self.title.assert_not_called()
+
+    def test_sessionless_ownership_survives_restart_and_yields_to_manual_rename(self):
+        with tempfile.TemporaryDirectory() as root:
+            with patch.dict(os.environ, {"HERDR_PLUGIN_STATE_DIR": root}):
+                agent = self.client._snapshot["agents"][0]
+                agent.pop("agent_session")
+                agent["terminal_title_stripped"] = "First task"
+                self.titles = AutoTitles()
+                self.apply()
+                self.titles = AutoTitles()
+                agent["terminal_title_stripped"] = "Second task"
+                self.apply()
+                self.assertEqual(self.client.calls[-1][-1], "Second task")
+                self.client._snapshot["tabs"][0]["label"] = "Manual"
+                self.apply()
+                self.assertEqual(len(self.client.calls), 2)
+
+    def test_sessionless_ownership_rejects_replacement_terminal(self):
+        agent = self.client._snapshot["agents"][0]
+        agent.pop("agent_session")
+        agent["terminal_title_stripped"] = "First task"
+        self.apply()
+        self.client._snapshot["panes"][0]["terminal_id"] = "replacement"
+        agent["terminal_title_stripped"] = "Different task"
+        self.apply()
+        self.assertEqual(len(self.client.calls), 1)
+
+    def test_session_id_arriving_later_keeps_ownership(self):
+        agent = self.client._snapshot["agents"][0]
+        session = agent.pop("agent_session")
+        agent["terminal_title_stripped"] = "First task"
+        self.apply()
+        agent["agent_session"] = session
+        agent["terminal_title_stripped"] = "Second task"
+        self.apply()
+        self.assertEqual(self.client.calls[-1][-1], "Second task")
+        agent["agent_session"] = dict(session, value="aaaaaaaa-1234-1234-1234-123456789abc")
+        agent["terminal_title_stripped"] = "Different session"
+        self.apply()
+        self.assertEqual(len(self.client.calls), 2)
+
     def test_replacement_session_cannot_claim_a_previously_owned_name(self):
         self.apply()
         self.client._snapshot["agents"][0]["agent_session"]["value"] = (
             "aaaaaaaa-1234-1234-1234-123456789abc")
         self.title.return_value = "Different session"
+        self.apply()
+        self.assertEqual(len(self.client.calls), 1)
+
+    def test_session_id_arriving_with_unchanged_title_blocks_later_replacement(self):
+        agent = self.client._snapshot["agents"][0]
+        session = agent.pop("agent_session")
+        agent["terminal_title_stripped"] = "First task"
+        self.apply()
+        agent["agent_session"] = session
+        self.apply()
+        agent["agent_session"] = dict(session, value="aaaaaaaa-1234-1234-1234-123456789abc")
+        agent["terminal_title_stripped"] = "Different session"
         self.apply()
         self.assertEqual(len(self.client.calls), 1)
 

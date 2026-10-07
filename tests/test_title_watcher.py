@@ -33,8 +33,14 @@ class WatcherTest(unittest.TestCase):
         self.directory = title_state_dir()
         self.directory.mkdir(parents=True)
 
-    def test_default_config_does_not_start_a_watcher(self):
+    def test_default_config_starts_a_watcher(self):
         with patch.object(Config, "load", return_value=Config()), \
+                patch.object(title_watcher.subprocess, "Popen") as spawn:
+            title_watcher.start()
+            spawn.assert_called_once()
+
+    def test_explicit_title_opt_out_does_not_start_a_watcher(self):
+        with patch.object(Config, "load", return_value=Config({"auto_titles": False})), \
                 patch.object(title_watcher.subprocess, "Popen") as spawn:
             title_watcher.start()
             spawn.assert_not_called()
@@ -43,7 +49,7 @@ class WatcherTest(unittest.TestCase):
         client = FakeClient(snapshot())
         client.call = Mock(return_value={"plugins": []})
         clock = [0.0]
-        config = Config({"tab_status": True, "agent_icons": "none"})
+        config = Config({"auto_titles": False, "tab_status": True, "agent_icons": "none"})
 
         def sleep(seconds):
             clock[0] += seconds
@@ -130,6 +136,7 @@ class WatcherTest(unittest.TestCase):
             title_watcher.registered_root(client)
         with tempfile.TemporaryFile() as lock:
             with patch.object(title_watcher, "HerdrClient", return_value=client), \
+                    patch.object(Config, "load", return_value=Config()), \
                     patch("sys.stderr"):
                 self.assertEqual(title_watcher.watch(os.dup(lock.fileno())), 0)
         client.snapshot.assert_not_called()

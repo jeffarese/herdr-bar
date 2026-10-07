@@ -23,7 +23,7 @@ DEFAULTS: Dict[str, Any] = {
     "selection_background": "auto",  # "auto" | "none" | "#rrggbb" | 0-255
     "claude_config_dirs": [],  # extra CLAUDE_CONFIG_DIR roots holding transcripts
     "tab_renaming_plugins": [],  # additional plugin IDs that own tab names
-    "auto_titles": False,  # opt in to task-based tab naming
+    "auto_titles": True,  # task-based naming, guarded against other naming plugins
     "tab_status": False,  # lead agent tab names with the vendor logo and status glyph
 }
 

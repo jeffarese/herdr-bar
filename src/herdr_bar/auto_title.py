@@ -218,11 +218,22 @@ def _candidates(
             continue
         session = agent.get("agent_session") or pane.get("agent_session") or {}
         kind = agent.get("agent")
-        if (kind not in ("claude", "codex") or session.get("agent") != kind
-                or session.get("kind") != "id"):
+        if kind not in ("claude", "codex"):
             continue
-        session_id = session.get("value")
-        if not isinstance(session_id, str) or not SESSION_ID.fullmatch(session_id):
+        suggested = _agent_title(agent, pane)
+        session_id = None
+        if session:
+            if (not isinstance(session, dict) or session.get("agent") != kind
+                    or session.get("kind") != "id"):
+                continue
+            session_id = session.get("value")
+            if not isinstance(session_id, str) or not SESSION_ID.fullmatch(session_id):
+                continue
+        elif not (suggested and isinstance(pane.get("terminal_id"), str)
+                  and pane["terminal_id"]):
+            # Terminal titles are available even when Herdr has no session ID.
+            # Only transcripts need that ID; terminal identity still prevents
+            # a replacement pane from claiming a name we previously wrote.
             continue
         identity = [kind, session_id, agent.get("pane_id"), pane.get("terminal_id")]
         previous = owned.get(tab["tab_id"], {})
@@ -231,11 +242,16 @@ def _candidates(
         if previous.get("yielded"):
             continue
         if tab.get("label") not in (None, "", str(positions[workspace])):
-            if previous.get("identity") != identity or previous.get("title") != tab.get("label"):
+            old_identity = previous.get("identity")
+            # Hooks may report the session ID after the first terminal title.
+            identified_later = (session_id is not None and old_identity ==
+                                [kind, None, agent.get("pane_id"), pane.get("terminal_id")])
+            if ((old_identity != identity and not identified_later)
+                    or previous.get("title") != tab.get("label")):
                 continue
         candidates[tab["tab_id"]] = {
             "identity": identity, "agent": kind,
-            "suggested": _agent_title(agent, pane),
+            "suggested": suggested,
             "session": session_id, "pane": agent.get("pane_id"),
             "terminal": pane.get("terminal_id"), "label": tab.get("label"),
             "cwd": agent.get("cwd") or pane.get("cwd") or "",
@@ -308,8 +324,11 @@ class AutoTitles:
         }
         for tab_id, candidate in candidates.items():
             title = candidate["suggested"]
-            if not title and candidate["agent"] == "claude":
+            if not title and candidate["agent"] == "claude" and candidate["session"]:
                 title = self.reader.title(candidate["session"], candidate["cwd"])
+            if title == candidate["label"] and tab_id in self.owned:
+                # Bind a newly reported session even when its title is unchanged.
+                self.owned[tab_id] = {"identity": candidate["identity"], "title": title}
             if not title or title == candidate["label"]:
                 continue
             try:
