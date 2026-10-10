@@ -24,6 +24,7 @@ DEFAULTS: Dict[str, Any] = {
     "claude_config_dirs": [],  # extra CLAUDE_CONFIG_DIR roots holding transcripts
     "tab_renaming_plugins": [],  # additional plugin IDs that own tab names
     "auto_titles": True,  # task-based naming, guarded against other naming plugins
+    "lowercase_titles": False,  # lowercase generated task titles only
     "tab_status": False,  # lead agent tab names with the vendor logo and status glyph
 }
 
@@ -52,6 +53,7 @@ class Config(object):
             value for value in renamers if isinstance(value, str) and value.strip()
         ] if isinstance(renamers, list) else []
         self.auto_titles = merged.get("auto_titles") is True
+        self.lowercase_titles = merged.get("lowercase_titles") is True
         self.tab_status = merged.get("tab_status") is True
 
     @staticmethod

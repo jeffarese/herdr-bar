@@ -270,6 +270,12 @@ class WatcherProcessTest(unittest.TestCase):
                         title_watcher.start()
                         self.assertEqual(spawn.call_count, 1)
                         self.assertEqual(data["tabs"][0]["label"], "○ Delayed task")
+                        renamed.clear()
+                        Path(temporary, "config.json").write_text(
+                            '{"agent_icons": "none", "auto_titles": true, '
+                            '"tab_status": true, "lowercase_titles": true}')
+                        self.assertTrue(renamed.wait(5), "watcher failed to reload config")
+                        self.assertEqual(data["tabs"][0]["label"], "○ delayed task")
                         title_watcher.stop()
                     deadline = time.monotonic() + 5
                     with (directory / "title-watcher.lock").open("a") as lock:
@@ -281,7 +287,7 @@ class WatcherProcessTest(unittest.TestCase):
                                 if time.monotonic() >= deadline:
                                     self.fail("watcher did not release its lock after stop")
                                 time.sleep(0.02)
-                    self.assertEqual(data["tabs"][0]["label"], "Delayed task")
+                    self.assertEqual(data["tabs"][0]["label"], "delayed task")
             finally:
                 # Also stop on assertion failures before deleting the state directory.
                 for marker in Path(temporary).glob("title-servers/*"):

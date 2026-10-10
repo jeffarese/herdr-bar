@@ -111,6 +111,10 @@ or agent name is ignored until a task title is available. Claude's local
 transcript supplies its generated title or first human prompt when Herdr has no
 useful terminal title yet. No extra model requests are made.
 
+- **Lowercase titles.** Set `"lowercase_titles": true` in the plugin's
+  `config.json` to lowercase generated task titles. The default is `false`.
+  Changes apply within two seconds while the watcher is running; custom names
+  keep their original case.
 - **Your names win.** Existing custom tab names, pane labels and agent names
   are preserved. The folder-derived agent name a launcher has to pass to
   `herdr agent start` (`app`, `app-2`, as herdr-newtab-plus does) counts as a
@@ -342,6 +346,7 @@ Optional. Write `config.json` in the plugin config directory
 | `claude_config_dirs` | `[]` | extra Claude config directories (`"~/.claude-work"`) whose transcripts supply tab titles; changes apply without a restart |
 | `tab_renaming_plugins` | `[]` | additional plugin IDs that suppress all automatic tab writes when enabled |
 | `auto_titles` | `true` | Claude and Codex task titles for unnamed tabs, suppressed by competing naming plugins; `false` opts out |
+| `lowercase_titles` | `false` | lowercase generated task titles; changes apply without a restart and custom names keep their case |
 | `tab_status` | `false` | opt in to agent logos and status glyphs in tab names; `false` restores labels still owned by the watcher |
 | `colors` | `{}` | role → `#rrggbb`, an ANSI name (`bright_blue`), or 0-255. Roles: `accent`, `match`, `text`, `muted`, `blocked`, `working`, `done`, `idle`, `unknown`, plus `agent_claude`, `agent_codex`, `agent_pi`, `agent_grok`, `agent_kimi`, `agent_gemini`, `agent_cursor`, `agent_opencode` |
 

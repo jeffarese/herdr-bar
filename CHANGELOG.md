@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.7.3
+
+- Add `lowercase_titles` (default `false`) to lowercase automatic Claude and
+  Codex task titles (#10). Changes apply while watching without a restart;
+  custom names retain their original case.
+
 ## 0.7.2
 
 - Enable automatic task titles by default when no competing naming plugin is

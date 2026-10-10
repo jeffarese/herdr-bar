@@ -1,6 +1,6 @@
 id = "herdr-bar"
 name = "Bar"
-version = "0.7.2"
+version = "0.7.3"
 # Requires startup hooks and agent session metadata from Herdr 0.9.
 min_herdr_version = "0.9.0"
 description = "Cmd+K command bar with agent icons, fuzzy search, and optional automatic tab titles"

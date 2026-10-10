@@ -174,6 +174,37 @@ class AutoTitlesTest(unittest.TestCase):
         self.assertEqual(result["tabs"][0]["label"], "Repair login")
         self.assertEqual(self.client.calls, [("rename", "w1:t9", "Repair login")])
 
+    def test_lowercase_titles_cover_terminal_and_transcript_sources(self):
+        self.titles.configure(Config({"lowercase_titles": True}))
+        self.title.return_value = "Repair ÉTÉ API"
+        for source in ("claude_transcript", "claude_terminal", "codex_terminal"):
+            with self.subTest(source=source):
+                self.titles.owned = {}
+                self.client = FakeClient(snapshot())
+                agent = self.client._snapshot["agents"][0]
+                if source.endswith("terminal"):
+                    agent["terminal_title_stripped"] = "Repair ÉTÉ API | app"
+                if source == "codex_terminal":
+                    agent["agent"] = agent["agent_session"]["agent"] = "codex"
+                self.apply()
+                self.apply()
+                self.assertEqual(self.client.calls, [("rename", "w1:t9", "repair été api")])
+
+    def test_lowercase_config_changes_preserve_ownership_and_custom_names(self):
+        self.apply()
+        self.titles.configure(Config({"lowercase_titles": True}))
+        self.apply()
+        self.apply()
+        self.titles.configure(Config({"lowercase_titles": False}))
+        self.apply()
+        self.client._snapshot["tabs"][0]["label"] = "My API work"
+        self.titles.configure(Config({"lowercase_titles": True}))
+        self.title.return_value = "New task"
+        self.apply()
+        self.assertEqual([call[-1] for call in self.client.calls],
+                         ["Repair login", "repair login", "Repair login"])
+        self.assertEqual(self.client._snapshot["tabs"][0]["label"], "My API work")
+
     def test_owned_names_follow_transcript_changes(self):
         self.apply()
         self.title.return_value = "New task"
@@ -306,10 +337,13 @@ class AutoTitlesTest(unittest.TestCase):
         self.assertEqual(len(self.client.calls), 1)
 
     def test_existing_custom_names_are_preserved_on_first_open(self):
-        for label in ("My work", "claude", "9", "1 · app › claude › Repair login", "Repair login"):
-            with self.subTest(label=label):
-                self.client._snapshot["tabs"][0]["label"] = label
-                self.apply()
+        for lowercase in (False, True):
+            self.titles.configure(Config({"lowercase_titles": lowercase}))
+            for label in ("My work", "claude", "9", "1 · app › claude › Repair login",
+                          "Repair login"):
+                with self.subTest(lowercase=lowercase, label=label):
+                    self.client._snapshot["tabs"][0]["label"] = label
+                    self.apply()
         self.assertEqual(self.client.calls, [])
         self.title.assert_not_called()
 

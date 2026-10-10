@@ -269,6 +269,7 @@ class AutoTitles:
     def configure(self, config: Config) -> None:
         self.enabled = config.auto_titles and os.environ.get(
             "HERDR_AUTO_TITLE_TRANSCRIPT", "true").lower() not in ("0", "false", "no", "off")
+        self.lowercase_titles = config.lowercase_titles
 
     def apply(self, client: HerdrClient, snapshot: Dict[str, Any]) -> Dict[str, Any]:
         if not self.enabled:
@@ -326,6 +327,8 @@ class AutoTitles:
             title = candidate["suggested"]
             if not title and candidate["agent"] == "claude" and candidate["session"]:
                 title = self.reader.title(candidate["session"], candidate["cwd"])
+            if self.lowercase_titles:
+                title = title.lower()
             if title == candidate["label"] and tab_id in self.owned:
                 # Bind a newly reported session even when its title is unchanged.
                 self.owned[tab_id] = {"identity": candidate["identity"], "title": title}
