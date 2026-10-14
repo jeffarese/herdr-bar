@@ -670,6 +670,15 @@ class AgeTest(unittest.TestCase):
         self.assertIsNone(instance.age_of(item))
         self.assertEqual(instance._age_queue, [])
 
+    def test_running_time_disabled_skips_the_reading(self):
+        client = FakeClient()
+        instance = bar(client=client, config=Config({"running_time": False}))
+        item = self.item(instance, "w1:p3")
+        self.assertIsNone(instance.age_of(item))
+        self.assertEqual(instance._age_queue, [])  # never queued, so ps is never run
+        instance.pump_ages()
+        self.assertEqual(self.reads(client), [])
+
 
 class PreviewTest(unittest.TestCase):
     def test_preview_is_debounced_then_cached(self):

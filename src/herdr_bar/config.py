@@ -26,6 +26,7 @@ DEFAULTS: Dict[str, Any] = {
     "auto_titles": True,  # task-based naming, guarded against other naming plugins
     "lowercase_titles": False,  # lowercase generated task titles only
     "tab_status": False,  # lead agent tab names with the vendor logo and status glyph
+    "running_time": True,  # per-row running time; false skips the ps/process_info reading
 }
 
 
@@ -55,6 +56,7 @@ class Config(object):
         self.auto_titles = merged.get("auto_titles") is True
         self.lowercase_titles = merged.get("lowercase_titles") is True
         self.tab_status = merged.get("tab_status") is True
+        self.running_time = merged.get("running_time") is not False
 
     @staticmethod
     def path(config_dir: Optional[str] = None) -> Optional[str]:

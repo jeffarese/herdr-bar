@@ -664,6 +664,10 @@ class Bar(object):
         pane_id = item.pane_id
         if not pane_id or item.kind == KIND_SPACE:
             return None
+        if not self.config.running_time:
+            # Disabled: never enqueue, so pump_ages never runs ps/process_info
+            # and the row draws without a time -- the cost is skipped entirely.
+            return None
         if pane_id not in self._ages:
             if pane_id not in self._age_queue:
                 self._age_queue.append(pane_id)
