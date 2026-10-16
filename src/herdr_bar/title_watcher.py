@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import fcntl
 import os
 import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Callable, Optional
+from typing import IO, Callable, Optional, Union
 
+from . import host
 from .auto_title import AutoTitles, title_state_dir
 from .client import EventStream, HerdrClient, HerdrError
 from .config import Config
@@ -24,6 +24,8 @@ from .tab_status import TabStatus
 INTERVAL = 2
 REGISTRATION_INTERVAL = 10
 MAX_BACKOFF = 30
+# In place of an inherited descriptor: the worker claims the lock file by name.
+LOCK_BY_NAME = "-"
 
 
 def start(resume: bool = False) -> None:
@@ -40,8 +42,7 @@ def start(resume: bool = False) -> None:
         directory.mkdir(parents=True, exist_ok=True)
         with (directory / "title-launch.lock").open("a") as gate:
             try:
-                flags = fcntl.LOCK_EX | (0 if resume else fcntl.LOCK_NB)
-                fcntl.flock(gate, flags)
+                host.lock(gate, blocking=resume)
             except BlockingIOError:
                 return
             _launch(directory, resume)
@@ -57,17 +58,34 @@ def _launch(directory: Path, resume: bool) -> None:
         return
     with (directory / "title-watcher.lock").open("a") as lock:
         try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            host.lock(lock)
         except BlockingIOError:
             return
         # Keep the singleton lock across spawn and any later exec replacement.
-        with (directory / "title-watcher.log").open("a") as log:
-            subprocess.Popen(
-                [sys.executable, str(Path(__file__).resolve().parents[2] / "run.py"),
-                 "--watch-titles", str(lock.fileno())],
-                stdin=subprocess.DEVNULL, stdout=log, stderr=log,
-                start_new_session=True, pass_fds=(lock.fileno(),),
-            )
+        with _log(directory) as log:
+            _spawn(Path(__file__).resolve().parents[2] / "run.py", log, lock)
+
+
+def _log(directory: Path) -> IO:
+    return (directory / "title-watcher.log").open("a", encoding="utf-8", errors="replace")
+
+
+def _spawn(run_py: Path, log: IO, lock: Optional[IO]) -> None:
+    """Start a detached worker that holds, or is about to claim, the lock."""
+    if host.WINDOWS:
+        # CreateProcess cannot hand over a locked handle. Let go so the worker
+        # can claim the file by name; a launcher racing into that gap starts a
+        # second worker, which loses the claim and exits.
+        if lock is not None:
+            host.unlock(lock)
+        token = LOCK_BY_NAME
+    else:
+        token = str(lock.fileno())
+    subprocess.Popen(
+        [sys.executable, str(run_py), "--watch-titles", token],
+        stdin=subprocess.DEVNULL, stdout=log, stderr=log,
+        **host.detached_process_options(lock),
+    )
 
 
 def stop() -> None:
@@ -85,7 +103,7 @@ def finish_if_stopped(lock, directory: Path,
         return False
     try:
         with (directory / "title-launch.lock").open("a") as gate:
-            fcntl.flock(gate, fcntl.LOCK_EX)
+            host.lock(gate, blocking=True)
             if stopped.exists():
                 # Still holding the lock, so no successor can decorate meanwhile.
                 if cleanup is not None:
@@ -118,19 +136,45 @@ def revision(root: Path) -> tuple:
     return tuple((str(path), path.stat().st_mtime_ns, path.stat().st_size) for path in files)
 
 
-def replace(root: Path, lock_fd: int) -> None:
+def replace(root: Path, lock: Union[int, IO]) -> None:
+    """Hand this server's watcher over to the plugin files now registered."""
+    if host.WINDOWS and not isinstance(lock, int):
+        # No exec on Windows. Release the lock, then start a worker that
+        # claims it; a startup hook racing into the gap loses and exits.
+        directory = Path(lock.name).parent
+        lock.close()
+        with _log(directory) as log:
+            _spawn(root / "run.py", log, None)
+        return
     # exec keeps the lock held, so no startup hook can mistake this handoff for
     # a stopped worker, and the replacement cannot race an old writer.
+    lock_fd = lock if isinstance(lock, int) else lock.fileno()
     os.set_inheritable(lock_fd, True)
     os.execv(sys.executable, [sys.executable, str(root / "run.py"),
                              "--watch-titles", str(lock_fd)])
 
 
-def watch(lock_fd: int) -> int:
+def claim(directory: Path) -> Optional[IO]:
+    """Take the worker lock by name; None when another worker holds it."""
+    directory.mkdir(parents=True, exist_ok=True)
+    lock = (directory / "title-watcher.lock").open("a")
+    try:
+        host.lock(lock)
+    except BlockingIOError:
+        lock.close()
+        return None
+    return lock
+
+
+def watch(lock_fd: Optional[int]) -> int:
     client = HerdrClient(timeout=2, socket_only=True)
     titles = AutoTitles()
     if titles.state_dir is None:
-        os.close(lock_fd)
+        if lock_fd is not None:
+            os.close(lock_fd)
+        return 0
+    lock = os.fdopen(lock_fd, "a") if lock_fd is not None else claim(titles.state_dir)
+    if lock is None:
         return 0
     writer = AutomaticTabClient(client)
     tabs = TabStatus(writer, titles.state_dir)
@@ -142,7 +186,7 @@ def watch(lock_fd: int) -> int:
     next_poll = 0.0
     delay = INTERVAL
     last_error = ""
-    with os.fdopen(lock_fd, "a") as lock:
+    with lock:
         while True:
             if finish_if_stopped(lock, titles.state_dir, tabs.clear):
                 return 0
@@ -155,7 +199,7 @@ def watch(lock_fd: int) -> int:
                         tabs.clear()
                         return 0
                     if root != current_root or revision(root) != current_revision:
-                        replace(root, lock_fd)
+                        replace(root, lock)
                         return 0
                     next_registration = now + REGISTRATION_INTERVAL
                 if now >= next_poll:

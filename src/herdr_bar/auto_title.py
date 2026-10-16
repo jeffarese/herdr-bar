@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import fcntl
 import hashlib
 import json
 import os
@@ -11,6 +10,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
+from . import host
 from .client import HerdrClient, HerdrError
 from .config import Config
 from .textutil import sanitize, truncate
@@ -287,7 +287,7 @@ class AutoTitles:
         self.state_dir.mkdir(parents=True, exist_ok=True)
         with (self.state_dir / "auto-titles.lock").open("a") as lock:
             try:
-                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                host.lock(lock)
             except BlockingIOError:
                 return snapshot
             path = self.state_dir / "auto-titles.json"

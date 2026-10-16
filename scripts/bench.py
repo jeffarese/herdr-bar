@@ -868,6 +868,8 @@ def _short(value: Any) -> str:
 
 
 def main(argv: Sequence[str]) -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")  # a piped Windows stdout is ANSI by default
     results = run_all()
     data = score(results)
 

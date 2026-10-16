@@ -3,8 +3,9 @@
 A Herdr snapshot carries no clocks -- no start time, no timestamp on a status
 change -- so the only honest answer comes from the operating system.
 ``pane.process_info`` names the process living in a pane and ``ps`` says how
-old it is. A start time never moves, so one reading per pane is enough for as
-long as the bar is open; everything after that is arithmetic.
+old it is (the kernel's process times on Windows). A start time never moves,
+so one reading per pane is enough for as long as the bar is open; everything
+after that is arithmetic.
 
 For an agent pane the answer is the age of the agent session. For a plain tab
 it is the age of whatever the shell is running, or of the shell itself when it
@@ -15,6 +16,8 @@ from __future__ import annotations
 
 import subprocess
 from typing import Any, Dict, Optional
+
+from . import host
 
 MINUTE = 60
 HOUR = 60 * MINUTE
@@ -71,6 +74,8 @@ def parse_etime(text: str) -> Optional[float]:
 
 def elapsed_seconds(pid: int, timeout: float = 1.0) -> Optional[float]:
     """Seconds since ``pid`` started, or None if it cannot be read."""
+    if host.WINDOWS:
+        return host.process_age(pid)
     try:
         proc = subprocess.run(
             ["ps", "-o", "etime=", "-p", str(pid)],

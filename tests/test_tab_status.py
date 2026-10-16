@@ -329,6 +329,7 @@ class ConfigTest(unittest.TestCase):
                 self.assertFalse(getattr(Config({key: value}), key))
 
 
+@unittest.skipUnless(hasattr(socket, "AF_UNIX"), "the event stream is a Unix socket")
 class EventStreamTest(unittest.TestCase):
     def setUp(self):
         temp = tempfile.TemporaryDirectory()

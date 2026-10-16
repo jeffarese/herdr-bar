@@ -7,12 +7,13 @@ import os
 import sys
 from typing import List, Optional
 
-from . import __version__
+from . import __version__, host
 from .app import Bar, jump
 from .client import HerdrClient, HerdrError
 from .config import Config
 from .items import build_items
 from .mru import Recents
+from .opener import open_bar
 from .term import Terminal, detect_appearance
 from .theme import Theme, default_selection_background
 
@@ -21,6 +22,7 @@ USAGE = """herdr-bar - jump to any Herdr tab, pane, or agent
 usage: run.py [options]
 
 options:
+  --open      open the bar popup through the Herdr CLI
   --list      print the rows the bar would show, as JSON
   --doctor    print environment diagnostics
   --version   print the plugin version
@@ -47,8 +49,13 @@ def _doctor(client: HerdrClient, config: Config) -> int:
     lines = [
         "herdr-bar %s" % __version__,
         "python           %s" % sys.version.split()[0],
+        "platform         %s" % sys.platform,
         "herdr bin        %s" % client.bin_path,
         "socket           %s" % (client.socket_path or "(unset)"),
+    ]
+    if host.WINDOWS and client.socket_path:
+        lines.append("named pipe       %s" % host.pipe_name(client.socket_path))
+    lines += [
         "socket usable    %s" % ("yes" if client.socket_ok else "no, using the CLI"),
         "config           %s" % (Config.path() or "(no HERDR_PLUGIN_CONFIG_DIR)"),
         "state            %s" % (state_path() or "(no HERDR_PLUGIN_STATE_DIR)"),
@@ -107,11 +114,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     if "--version" in args:
         sys.stdout.write("herdr-bar %s\n" % __version__)
         return 0
+    if "--open" in args:
+        return open_bar()
 
     if any(arg in args for arg in ("--start-titles", "--watch-titles", "--stop-titles")):
-        from .title_watcher import start, stop, watch
+        from .title_watcher import LOCK_BY_NAME, start, stop, watch
         if args[0] == "--watch-titles":
-            return watch(int(args[1]))
+            return watch(None if args[1] == LOCK_BY_NAME else int(args[1]))
         if args[0] == "--stop-titles":
             stop()
         else:

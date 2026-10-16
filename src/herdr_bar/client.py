@@ -2,12 +2,13 @@
 
 Two transports, same surface:
 
-* the Unix socket at ``HERDR_SOCKET_PATH`` -- one request per connection,
-  newline-delimited JSON, ~15ms round trip. Used for the hot paths
-  (``session.snapshot`` on every refresh, ``pane.read`` for the preview).
+* the socket at ``HERDR_SOCKET_PATH`` -- one request per connection,
+  newline-delimited JSON, ~15ms round trip. A Unix socket on POSIX; on
+  Windows the named pipe Herdr serves under the same name. Used for the hot
+  paths (``session.snapshot`` on every refresh, ``pane.read`` for the preview).
 * the ``herdr`` CLI at ``HERDR_BIN_PATH`` -- portable, works when the socket
-  is missing or is a Windows named pipe. Used for one-shot focus calls and
-  as the automatic fallback for everything else.
+  is missing. Used for one-shot focus calls and as the automatic fallback
+  for everything else.
 """
 
 from __future__ import annotations
@@ -20,7 +21,9 @@ import subprocess
 import time
 from typing import Any, Dict, List, Optional, Sequence
 
+from . import host
 from .age import elapsed_seconds, pid_for
+from .opener import herdr_bin
 
 
 class HerdrError(RuntimeError):
@@ -30,19 +33,6 @@ class HerdrError(RuntimeError):
 def _env_path(name: str) -> Optional[str]:
     value = os.environ.get(name)
     return value if value else None
-
-
-def _resolve_bin() -> str:
-    """The Herdr binary to shell out to.
-
-    HERDR_BIN_PATH can outlive the binary it names -- upgrading Herdr under a
-    running server leaves the old path dangling -- so an unusable value falls
-    back to whatever `herdr` resolves to on PATH.
-    """
-    candidate = _env_path("HERDR_BIN_PATH")
-    if candidate and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
-        return candidate
-    return "herdr"
 
 
 class HerdrClient:
@@ -56,7 +46,7 @@ class HerdrClient:
         if socket_path is None:
             socket_path = _env_path("HERDR_SOCKET_PATH")
         self.socket_path = socket_path
-        self.bin_path = bin_path or _resolve_bin()
+        self.bin_path = bin_path or herdr_bin()
         self.timeout = timeout
         self.socket_only = socket_only
         self._socket_ok = self._socket_usable()
@@ -68,20 +58,32 @@ class HerdrClient:
     # -- transports ---------------------------------------------------------
 
     def _socket_usable(self) -> bool:
-        if not self.socket_path or not hasattr(socket, "AF_UNIX"):
+        if not self.socket_path:
+            return False
+        if not host.WINDOWS and not hasattr(socket, "AF_UNIX"):
             return False
         try:
+            # On Windows the path is the marker file next to the named pipe.
             return os.path.exists(self.socket_path)
         except OSError:
             return False
 
     def _socket_call(self, method: str, params: Dict[str, Any]) -> Dict[str, Any]:
-        payload = json.dumps({"id": "bar", "method": method, "params": params}) + "\n"
+        payload = (json.dumps({"id": "bar", "method": method, "params": params}) + "\n").encode()
+        if host.WINDOWS:
+            line = host.pipe_request(host.pipe_name(self.socket_path), payload, self.timeout)
+        else:
+            line = self._unix_request(payload)
+        if not line:
+            raise HerdrError("herdr closed the connection without a response")
+        return json.loads(line.decode("utf-8", "replace"))
+
+    def _unix_request(self, payload: bytes) -> bytes:
         conn = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         conn.settimeout(self.timeout)
         try:
             conn.connect(self.socket_path)  # type: ignore[arg-type]
-            conn.sendall(payload.encode("utf-8"))
+            conn.sendall(payload)
             chunks: List[bytes] = []
             buffered = b""
             while b"\n" not in buffered:
@@ -95,10 +97,7 @@ class HerdrClient:
                 conn.close()
             except OSError:
                 pass
-        line = buffered.split(b"\n", 1)[0]
-        if not line:
-            raise HerdrError("herdr closed the connection without a response")
-        return json.loads(line.decode("utf-8", "replace"))
+        return buffered.split(b"\n", 1)[0]
 
     def _cli(self, args: List[str]) -> Dict[str, Any]:
         try:
@@ -237,6 +236,8 @@ class EventStream:
 
     The events themselves are not interpreted: whoever waits re-reads the
     snapshot, so a dropped or coalesced event costs latency, never accuracy.
+    On Windows there is no stream at all -- a named pipe cannot be selected
+    on -- and ``wait`` simply sleeps, so the watcher polls at its interval.
     """
 
     RETRY = 2.0
@@ -256,6 +257,8 @@ class EventStream:
         self.close()
         # A refused or dropped stream is retried at polling pace, never in a hot loop.
         if not self.socket_path or not subscriptions or time.monotonic() < self.retry_at:
+            return
+        if host.WINDOWS:
             return
         conn = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:

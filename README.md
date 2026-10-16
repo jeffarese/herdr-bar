@@ -59,8 +59,16 @@ description = "command bar"
 Reload with `herdr server reload-config`, then press `ctrl+b k`.
 
 Requires herdr 0.9.0+ (startup hooks and agent session metadata), Python 3.9+
-on PATH, and macOS or Linux. Herdr refuses to install the plugin on anything
-older, so there is nothing to get wrong.
+on PATH as `python3`, and macOS, Linux or Windows. Herdr refuses to install the
+plugin on anything older, so there is nothing to get wrong.
+
+**Windows.** Herdr starts plugin commands without a shell, so `python3` itself
+has to start Python 3.9 or later. The Microsoft Store build of Python provides
+`python3`. The python.org installer provides only `python` and `py`, and then
+`python3` is a Windows shortcut that prints "Python was not found". Check with
+`python3 --version` in a new terminal. Everything works on Windows, with one
+difference: tab status glyphs follow the watcher's two-second poll instead of
+an event stream. Tested on Windows 11 with herdr 0.9.3 in Windows Terminal.
 
 ## Automatic tab updates
 
@@ -169,6 +177,9 @@ If Radar already shows logos, you are ready. Radar itself is not required:
 curl -fsSL -o ~/Library/Fonts/HerdrAgentIconsMax-Regular.ttf \
   https://raw.githubusercontent.com/hhdebb/herdr-radar/main/dist/HerdrAgentIconsMax-Regular.ttf
 ```
+
+On Windows, open the downloaded `.ttf` and choose *Install*. The bar looks for
+it in both the per-user and the system font folder.
 
 Then point your terminal at it for the logo codepoints. In Ghostty's config:
 
@@ -368,11 +379,13 @@ invocation with `herdr plugin pane open --plugin herdr-bar --entrypoint bar
 ## How it works
 
 The bar is one short-lived process in a herdr popup pane. It reads the whole
-session in a single `session.snapshot` call over herdr's Unix socket (~15ms),
+session in a single `session.snapshot` call over herdr's socket (~15ms; a Unix
+socket, or the named pipe herdr serves under the same path on Windows),
 re-reads it while it is open so statuses stay live, tails the selected pane with
 `pane.read` for the preview, and calls `tab.focus`, `pane.focus`, `agent.focus`,
 or `workspace.focus` when you press Enter, or `tab.close` when you confirm a
-delete. Running times come from `pane.process_info` plus `ps`, one reading per
+delete. Running times come from `pane.process_info` plus `ps` (the process
+creation time on Windows), one reading per
 pane on the way onto the screen and then ticked locally, because a start time
 never moves. If the socket is unavailable it falls back to the `herdr` CLI.
 Eligible Claude and Codex tabs are updated through `tab.rename`, with a fresh
@@ -381,7 +394,8 @@ bounded local read. `--list` and `--doctor` remain read-only. A singleton
 background watcher runs when either tab feature is enabled and checks settings
 and titles every two seconds; popup refreshes only read Herdr's snapshot. Each idle tick makes one snapshot request. Tab status rides
 the same watcher: one `events.subscribe` stream (status changes of agent panes
-and agent detection) wakes it immediately, and a status change costs one
+and agent detection) wakes it immediately, except on Windows, where the
+two-second tick carries status changes instead. A status change costs one
 rename per affected tab. Nothing is renamed on a timer. Decorated tabs are
 recorded in `tab-status.json` before their first prefixed label is written, so
 only labels the watcher still owns are restored. Exact written labels and

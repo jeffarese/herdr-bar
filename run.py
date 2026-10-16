@@ -12,7 +12,10 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
 
-from herdr_bar.cli import main  # noqa: E402
-
 if __name__ == "__main__":
+    if sys.argv[1:] == ["--open"]:
+        # The open action only runs the Herdr CLI; skip the bar's imports.
+        from herdr_bar.opener import open_bar
+        sys.exit(open_bar())
+    from herdr_bar.cli import main
     sys.exit(main(sys.argv[1:]))

@@ -490,10 +490,10 @@ class NamingPersistenceTest(unittest.TestCase):
         self.assertEqual(self.client._snapshot["tabs"][0]["label"], "1")
 
     def test_busy_lock_returns_without_server_requests_or_mutation(self):
-        import fcntl
+        from herdr_bar import host
         self.titles.state_dir.mkdir(parents=True)
         with (self.titles.state_dir / "auto-titles.lock").open("a") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+            host.lock(lock, blocking=True)
             with patch.object(self.client, "snapshot") as read:
                 self.titles.apply(self.client, self.client._snapshot)
                 read.assert_not_called()

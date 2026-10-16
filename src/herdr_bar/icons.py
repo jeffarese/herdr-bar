@@ -27,6 +27,10 @@ def font_available() -> bool:
     """Best-effort local detection, once per popup; remote fonts need opt-in."""
     if sys.platform == "darwin":
         directories = [Path.home() / "Library/Fonts", Path("/Library/Fonts")]
+    elif sys.platform == "win32":
+        local = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData/Local")
+        system = Path(os.environ.get("SYSTEMROOT") or "C:/Windows")
+        directories = [local / "Microsoft/Windows/Fonts", system / "Fonts"]
     else:
         data = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share")
         directories = [data / "fonts", Path.home() / ".fonts"]

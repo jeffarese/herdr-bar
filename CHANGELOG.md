@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Run on Windows (#7). The bar draws on the Windows console, talks to Herdr
+  over the named pipe behind `HERDR_SOCKET_PATH` with the same timeouts as the
+  Unix socket, and reads running times from the kernel. Task titles and tab
+  status run in the same detached watcher; on Windows it polls every two
+  seconds instead of following an event stream.
+- Open the bar with `python3 run.py --open` instead of `sh -c`. Windows has no
+  `sh`, and Herdr rejects a second `open` action even with a different
+  `platforms` list. The open path imports nothing beyond the CLI call.
+
 ## 0.7.3
 
 - Add `lowercase_titles` (default `false`) to lowercase automatic Claude and

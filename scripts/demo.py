@@ -18,6 +18,10 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 sys.path.insert(0, ROOT)
+# A piped stdout on Windows defaults to the ANSI code page, which has no
+# box drawing or chevrons in it.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
 
 from herdr_bar.app import Bar  # noqa: E402
 from herdr_bar.config import Config  # noqa: E402

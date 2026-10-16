@@ -1,11 +1,11 @@
-import fcntl
 import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from herdr_bar import title_watcher
+from herdr_bar import host, title_watcher
 from herdr_bar.auto_title import AutoTitles, title_state_dir
 from herdr_bar.client import HerdrClient, HerdrError
 from herdr_bar.config import Config
@@ -13,6 +13,7 @@ from herdr_bar.renaming_guard import RenamingPluginDetected
 
 from .test_app import FakeClient
 from .test_auto_title import snapshot
+from .test_client import make_server
 
 ROOT = Path(title_watcher.__file__).resolve().parents[2]
 
@@ -69,14 +70,19 @@ class WatcherTest(unittest.TestCase):
 
     def test_repeated_start_does_not_spawn_another_watcher(self):
         with (self.directory / "title-watcher.lock").open("a") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+            host.lock(lock, blocking=True)
             with patch.object(title_watcher.subprocess, "Popen") as spawn:
                 title_watcher.start()
                 spawn.assert_not_called()
         with patch.object(title_watcher.subprocess, "Popen") as spawn:
             title_watcher.start()
-            self.assertTrue(spawn.call_args.kwargs["pass_fds"])
-            self.assertTrue(spawn.call_args.kwargs["start_new_session"])
+            options = spawn.call_args.kwargs
+            if host.WINDOWS:
+                self.assertTrue(options["creationflags"] & subprocess.DETACHED_PROCESS)
+                self.assertEqual(spawn.call_args.args[0][-1], title_watcher.LOCK_BY_NAME)
+            else:
+                self.assertTrue(options["pass_fds"])
+                self.assertTrue(options["start_new_session"])
 
     def test_unwritable_state_or_spawn_failure_does_not_break_popup(self):
         with patch.object(Path, "mkdir", side_effect=PermissionError), \
@@ -98,7 +104,7 @@ class WatcherTest(unittest.TestCase):
 
     def test_stop_resume_interleavings_do_not_lose_the_watcher(self):
         with (self.directory / "title-watcher.lock").open("a") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+            host.lock(lock, blocking=True)
             title_watcher.stop()
             with patch.object(title_watcher.subprocess, "Popen") as spawn:
                 title_watcher.start(resume=True)
@@ -153,12 +159,26 @@ class WatcherTest(unittest.TestCase):
             self.assertEqual(call.call_count, 2)
             cli.assert_not_called()
 
+    @unittest.skipIf(host.WINDOWS, "Windows has no exec; see the claim test")
     def test_exec_handoff_preserves_singleton_lock(self):
         with tempfile.TemporaryFile() as lock:
             with patch.object(os, "execv") as execute:
                 title_watcher.replace(ROOT, lock.fileno())
                 self.assertTrue(os.get_inheritable(lock.fileno()))
                 self.assertEqual(execute.call_args.args[1][-1], str(lock.fileno()))
+
+    @unittest.skipUnless(host.WINDOWS, "the by-name handoff is the Windows path")
+    def test_windows_handoff_releases_the_lock_for_a_worker_that_claims_it(self):
+        lock = title_watcher.claim(self.directory)
+        self.assertIsNotNone(lock)
+        self.assertIsNone(title_watcher.claim(self.directory))
+        with patch.object(title_watcher.subprocess, "Popen") as spawn:
+            title_watcher.replace(ROOT, lock)
+        self.assertTrue(lock.closed)
+        self.assertEqual(spawn.call_args.args[0][-1], title_watcher.LOCK_BY_NAME)
+        successor = title_watcher.claim(self.directory)
+        self.assertIsNotNone(successor)
+        successor.close()
 
     def test_watcher_recovers_after_server_restart_without_opening_popup(self):
         client = FakeClient(snapshot())
@@ -208,9 +228,6 @@ class WatcherTest(unittest.TestCase):
 
 class WatcherProcessTest(unittest.TestCase):
     def test_real_process_keeps_lock_updates_closed_popup_and_stops(self):
-        import json
-        import socketserver
-        import subprocess
         import threading
         import time
 
@@ -223,29 +240,24 @@ class WatcherProcessTest(unittest.TestCase):
             agent["terminal_title_stripped"] = "Delayed task | app"
             renamed = threading.Event()
 
-            class Handler(socketserver.StreamRequestHandler):
-                def handle(self):
-                    request = json.loads(self.rfile.readline())
-                    method = request["method"]
-                    if method == "plugin.list":
-                        result = {"plugins": [{"plugin_id": "herdr-bar", "enabled": True,
-                                               "plugin_root": str(ROOT)}]}
-                    elif method == "session.snapshot":
-                        result = {"snapshot": data}
-                    elif method == "tab.rename":
-                        data["tabs"][0]["label"] = request["params"]["label"]
-                        result = {}
-                        renamed.set()
-                    elif method == "events.subscribe":
-                        self.wfile.write(b'{"error": {"message": "unsupported"}}\n')
-                        return
-                    else:
-                        raise AssertionError(method)
-                    self.wfile.write(json.dumps({"result": result}).encode() + b"\n")
+            def respond(request):
+                method = request["method"]
+                if method == "plugin.list":
+                    result = {"plugins": [{"plugin_id": "herdr-bar", "enabled": True,
+                                           "plugin_root": str(ROOT)}]}
+                elif method == "session.snapshot":
+                    result = {"snapshot": data}
+                elif method == "tab.rename":
+                    data["tabs"][0]["label"] = request["params"]["label"]
+                    result = {}
+                    renamed.set()
+                elif method == "events.subscribe":
+                    return {"error": {"message": "unsupported"}}
+                else:
+                    raise AssertionError(method)
+                return {"result": result}
 
-            server = socketserver.UnixStreamServer(socket_path, Handler)
-            thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01})
-            thread.start()
+            server = make_server(socket_path, respond)
             processes = []
             try:
                 Path(temporary, "config.json").write_text(
@@ -281,7 +293,7 @@ class WatcherProcessTest(unittest.TestCase):
                     with (directory / "title-watcher.lock").open("a") as lock:
                         while True:
                             try:
-                                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                                host.lock(lock)
                                 break
                             except BlockingIOError:
                                 if time.monotonic() >= deadline:
@@ -298,6 +310,4 @@ class WatcherProcessTest(unittest.TestCase):
                     except subprocess.TimeoutExpired:
                         process.terminate()
                         process.wait(timeout=5)
-                server.shutdown()
-                thread.join()
-                server.server_close()
+                server.close()
