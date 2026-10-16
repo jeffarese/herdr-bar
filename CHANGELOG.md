@@ -7,6 +7,8 @@
   Unix socket, and reads running times from the kernel. Task titles and tab
   status run in the same detached watcher; on Windows it polls every two
   seconds instead of following an event stream.
+- Skip a Windows console's default title, the path of the program that opened
+  it, when naming a tab. Codex panes keep that title until Codex sets one.
 - Open the bar with `python3 run.py --open` instead of `sh -c`. Windows has no
   `sh`, and Herdr rejects a second `open` action even with a different
   `platforms` list. The open path imports nothing beyond the CLI call.

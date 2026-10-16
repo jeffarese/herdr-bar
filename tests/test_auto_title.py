@@ -229,6 +229,19 @@ class AutoTitlesTest(unittest.TestCase):
         self.assertEqual(self.client.calls[-1][-1], "Repair OAuth")
         self.title.assert_not_called()
 
+    def test_windows_console_default_title_is_not_a_task(self):
+        agent = self.client._snapshot["agents"][0]
+        agent["agent"] = agent["agent_session"]["agent"] = "codex"
+        for title in (r"C:\Program Files\PowerShell\7\pwsh.EXE",
+                      r"Administrator: C:\WINDOWS\system32\cmd.exe",
+                      r"\\server\tools\codex.cmd"):
+            agent["terminal_title_stripped"] = title
+            self.apply()
+        self.assertEqual(self.client.calls, [])
+        agent["terminal_title_stripped"] = r"Fix C:\temp\build.cmd quoting"
+        self.apply()
+        self.assertEqual(self.client.calls[-1][-1], r"Fix C:\temp\build.cmd quoting")
+
     def test_ownership_survives_restart_and_manual_rename_relinquishes_it(self):
         with tempfile.TemporaryDirectory() as root:
             with patch.dict(os.environ, {"HERDR_PLUGIN_STATE_DIR": root}):
