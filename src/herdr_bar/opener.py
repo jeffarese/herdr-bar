@@ -1,10 +1,10 @@
-"""Open the bar's popup through the Herdr CLI: what the ``open`` action runs.
+"""Open the bar's popup through the Herdr CLI: what ``open-windows`` runs.
 
-Herdr starts manifest commands without a shell, and one ``open`` action has to
-serve every platform: Windows has no ``sh``, and Herdr refuses a second action
-with the same id even when the two list different ``platforms``. So the CLI
-one-liner lives here. This module imports nothing the one-liner does not need,
-which keeps the cost to the interpreter's own startup.
+Herdr starts manifest commands without a shell, and Windows has no ``sh`` for
+the one-liner behind ``open``. Herdr refuses a second action with the same id
+even when the two list different ``platforms``, so Windows has its own action
+and the CLI one-liner lives here. This module imports nothing the one-liner
+does not need, which keeps the cost to the interpreter's own startup.
 """
 
 from __future__ import annotations

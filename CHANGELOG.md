@@ -9,9 +9,10 @@
   seconds instead of following an event stream.
 - Skip a Windows console's default title, the path of the program that opened
   it, when naming a tab. Codex panes keep that title until Codex sets one.
-- Open the bar with `python3 run.py --open` instead of `sh -c`. Windows has no
-  `sh`, and Herdr rejects a second `open` action even with a different
-  `platforms` list. The open path imports nothing beyond the CLI call.
+- Add an `open-windows` action that runs `python3 run.py --open`. Windows has
+  no `sh`, and Herdr rejects a second `open` action even with a different
+  `platforms` list. The open path imports nothing beyond the CLI call. On
+  Linux and macOS, `open` keeps its `sh -c` one-liner and its startup cost.
 
 ## 0.7.3
 

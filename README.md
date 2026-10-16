@@ -62,7 +62,9 @@ Requires herdr 0.9.0+ (startup hooks and agent session metadata), Python 3.9+
 on PATH as `python3`, and macOS, Linux or Windows. Herdr refuses to install the
 plugin on anything older, so there is nothing to get wrong.
 
-**Windows.** Herdr starts plugin commands without a shell, so `python3` itself
+**Windows.** Bind `command = "herdr-bar.open-windows"` instead of
+`herdr-bar.open`: `open` is a shell one-liner, and Windows has no `sh`.
+Herdr starts plugin commands without a shell, so `python3` itself
 has to start Python 3.9 or later. The Microsoft Store build of Python provides
 `python3`. The python.org installer provides only `python` and `py`, and then
 `python3` is a Windows shortcut that prints "Python was not found". Check with
