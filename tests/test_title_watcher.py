@@ -77,6 +77,8 @@ class WatcherTest(unittest.TestCase):
         with patch.object(title_watcher.subprocess, "Popen") as spawn:
             title_watcher.start()
             options = spawn.call_args.kwargs
+            # Outside the plugin directory, which Windows could not replace.
+            self.assertEqual(options["cwd"], str(self.directory))
             if host.WINDOWS:
                 self.assertTrue(options["creationflags"] & subprocess.DETACHED_PROCESS)
                 self.assertEqual(spawn.call_args.args[0][-1], title_watcher.LOCK_BY_NAME)

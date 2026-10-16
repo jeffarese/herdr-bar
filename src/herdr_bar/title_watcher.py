@@ -63,15 +63,20 @@ def _launch(directory: Path, resume: bool) -> None:
             return
         # Keep the singleton lock across spawn and any later exec replacement.
         with _log(directory) as log:
-            _spawn(Path(__file__).resolve().parents[2] / "run.py", log, lock)
+            _spawn(Path(__file__).resolve().parents[2] / "run.py", directory, log, lock)
 
 
 def _log(directory: Path) -> IO:
     return (directory / "title-watcher.log").open("a", encoding="utf-8", errors="replace")
 
 
-def _spawn(run_py: Path, log: IO, lock: Optional[IO]) -> None:
-    """Start a detached worker that holds, or is about to claim, the lock."""
+def _spawn(run_py: Path, directory: Path, log: IO, lock: Optional[IO]) -> None:
+    """Start a detached worker that holds, or is about to claim, the lock.
+
+    The worker runs in its state directory, not in the plugin's: Windows does
+    not let Herdr replace a directory that a running process works in, so a
+    long-lived worker there would make every plugin update fail.
+    """
     if host.WINDOWS:
         # CreateProcess cannot hand over a locked handle. Let go so the worker
         # can claim the file by name; a launcher racing into that gap starts a
@@ -83,7 +88,7 @@ def _spawn(run_py: Path, log: IO, lock: Optional[IO]) -> None:
         token = str(lock.fileno())
     subprocess.Popen(
         [sys.executable, str(run_py), "--watch-titles", token],
-        stdin=subprocess.DEVNULL, stdout=log, stderr=log,
+        cwd=str(directory), stdin=subprocess.DEVNULL, stdout=log, stderr=log,
         **host.detached_process_options(lock),
     )
 
@@ -144,7 +149,7 @@ def replace(root: Path, lock: Union[int, IO]) -> None:
         directory = Path(lock.name).parent
         lock.close()
         with _log(directory) as log:
-            _spawn(root / "run.py", log, None)
+            _spawn(root / "run.py", directory, log, None)
         return
     # exec keeps the lock held, so no startup hook can mistake this handoff for
     # a stopped worker, and the replacement cannot race an old writer.
