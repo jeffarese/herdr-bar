@@ -24,6 +24,8 @@ pub struct Config {
     pub lowercase_titles: bool,
     pub tab_status: bool,
     pub running_time: bool,
+    /// Open with the row you are in selected, not the one you came from.
+    pub select_current: bool,
 }
 
 /// Python's `int(value)` for whatever JSON put there; None where it raises.
@@ -87,6 +89,7 @@ impl Config {
             lowercase_titles: get("lowercase_titles").map(|v| v.is_true()).unwrap_or(false),
             tab_status: get("tab_status").map(|v| v.is_true()).unwrap_or(false),
             running_time: get("running_time").map(|v| !v.is_false()).unwrap_or(true),
+            select_current: get("select_current").map(|v| v.is_true()).unwrap_or(false),
         }
     }
 
@@ -150,6 +153,15 @@ mod tests {
             for value in ["false", "\"true\"", "1", "null"] {
                 assert!(!pick(&with(key, value), key), "{} = {}", key, value);
             }
+        }
+    }
+
+    #[test]
+    fn select_current_takes_only_true() {
+        assert!(!Config::default().select_current);
+        assert!(with("select_current", "true").select_current);
+        for value in ["false", "\"true\"", "1", "null"] {
+            assert!(!with("select_current", value).select_current, "select_current = {}", value);
         }
     }
 }

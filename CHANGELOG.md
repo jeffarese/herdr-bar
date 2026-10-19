@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Add `select_current` (default `false`) to open with the row you are in
+  selected instead of the one you came from (#19). The order does not change.
+
 ## 0.9.1
 
 - Fix tab titles and tab status on Windows, broken in 0.9.0: the lock files

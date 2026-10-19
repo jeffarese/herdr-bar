@@ -259,6 +259,11 @@ impl Bar {
         let pool = pool?;
         self.snapshot_answer = answer;
         self.install(pool, false);
+        if self.config.select_current {
+            // Open on the row you are in instead of the one you came from.
+            // The order stays alt-tab's: that row follows the recent ones.
+            self.reselect(self.current_key.clone());
+        }
         Ok(())
     }
 
@@ -1654,6 +1659,30 @@ mod tests {
         recents.touch("w1:p5", "");
         let t = bar_with(testutil::snapshot(), Config::default(), recents);
         assert_eq!(Some(&row_item(&t.bar, 1).key), t.bar.current_key.as_ref());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn select_current_opens_on_the_row_you_are_in() {
+        let mut recents = Recents::new(None);
+        recents.touch("w1:p5", "");
+        let config = config_of(&[("select_current", Value::Bool(true))]);
+        let t = bar_with(testutil::snapshot(), config, recents);
+        assert_eq!(t.bar.selected, 1);
+        assert_eq!(Some(&t.bar.selected_item().key), t.bar.current_key.as_ref());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn select_current_keeps_the_top_row_without_a_current_row() {
+        let mut snapshot = testutil::snapshot();
+        let map = snapshot.as_dict_mut().unwrap();
+        map.insert("focused_pane_id", Value::str("w9:p9"));
+        map.insert("focused_tab_id", Value::str("w9:t9"));
+        let config = config_of(&[("select_current", Value::Bool(true))]);
+        let t = bar_with(snapshot, config, Recents::new(None));
+        assert!(t.bar.current_key.is_none());
+        assert_eq!(t.bar.selected, 0);
     }
 
     // -- ScopeTest --------------------------------------------------------------
