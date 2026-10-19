@@ -203,6 +203,7 @@ impl Bar {
     pub fn new(client: HerdrClient, config: Config, recents: Recents, mut theme: Theme) -> Bar {
         theme.agent_icons = icons::enabled(&config.agent_icons);
         let preview = config.preview_starts_on();
+        let scope = config.scope;
         Bar {
             client,
             config,
@@ -213,7 +214,7 @@ impl Bar {
             rows: Vec::new(),
             query: String::new(),
             cursor: 0,
-            scope: "all",
+            scope,
             selected: 0,
             offset: 0,
             preview_enabled: preview,
@@ -544,7 +545,8 @@ impl Bar {
                 }
             }
             "ctrl+u" => {
-                self.scope = "all";
+                // Start over: the filter the bar opened with, not necessarily all.
+                self.scope = self.config.scope;
                 self.set_query(String::new(), None);
             }
             "ctrl+w" => self.delete_word(),
@@ -1729,6 +1731,38 @@ mod tests {
         assert_eq!(t.bar.scope, "tab");
         t.bar.cycle_scope(-1);
         assert_eq!(t.bar.scope, "pane");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn configured_scope_is_the_filter_the_bar_opens_with() {
+        let config = config_of(&[("scope", Value::str("agent"))]);
+        let t = bar_with(testutil::snapshot(), config, Recents::new(None));
+        assert_eq!(t.bar.scope, "agent");
+        assert!(!t.bar.rows.is_empty());
+        assert!(t.bar.rows.iter().all(|row| t.bar.pool[row.item].kind == KIND_AGENT));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn backspace_clears_a_configured_scope_and_ctrl_u_restores_it() {
+        let config = config_of(&[("scope", Value::str("agent"))]);
+        let mut t = bar_with(testutil::snapshot(), config, Recents::new(None));
+        press(&mut t.bar, &[b"\x7f"]);
+        assert_eq!(t.bar.scope, "all");
+        press(&mut t.bar, &[b"retry"]);
+        press(&mut t.bar, &[b"\x15"]);
+        assert_eq!(t.bar.query, "");
+        assert_eq!(t.bar.scope, "agent");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ctrl_u_clears_a_typed_scope_back_to_all() {
+        let mut t = bar();
+        press(&mut t.bar, &[b"@"]);
+        press(&mut t.bar, &[b"\x15"]);
+        assert_eq!(t.bar.scope, "all");
     }
 
     // -- KeyTest ----------------------------------------------------------------

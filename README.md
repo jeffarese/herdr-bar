@@ -285,7 +285,7 @@ Whichever you pick, Cmd+K is likely already taken by the terminal (usually
 | `@` `%` `$` `!` on an empty query | filter to agents / panes / plain tabs / rows that need you |
 | `backspace` on an empty query | clear the filter, then close the selected row's tab |
 | `delete` (fn+`⌫` on a Mac laptop) | close the selected row's tab, whatever is typed |
-| `ctrl+u` / `ctrl+w` / `ctrl+d` | clear the query / delete a word / forward delete |
+| `ctrl+u` / `ctrl+w` / `ctrl+d` | clear the query and return to the opening filter / delete a word / forward delete |
 | `ctrl+o` | toggle the preview |
 | `ctrl+r` | rename the selected row's tab; Enter saves, Esc keeps the old name |
 | `pgup` / `pgdn` | page |
@@ -366,6 +366,7 @@ Optional. Write `config.json` in the plugin config directory
 | `lowercase_titles` | `false` | lowercase generated task titles; changes apply without a restart and custom names keep their case |
 | `tab_status` | `false` | opt in to agent logos and status glyphs in tab names; `false` restores labels still owned by the watcher |
 | `running_time` | `true` | per-row running time (`47s`, `2h04m`); `false` hides it and skips the per-pane `process_info`/`ps` reading, so the bar opens faster |
+| `scope` | `"all"` | the filter the bar opens with: `"agent"` (`@ agents`), `"pane"` (`% panes`), `"tab"` (`$ shells`), `"blocked"` (`! needs you`) or `"all"`; `backspace` on an empty query still clears it, and `ctrl+u` returns to it |
 | `colors` | `{}` | role → `#rrggbb`, an ANSI name (`bright_blue`), or 0-255. Roles: `accent`, `match`, `text`, `muted`, `blocked`, `working`, `done`, `idle`, `unknown`, plus `agent_claude`, `agent_codex`, `agent_pi`, `agent_grok`, `agent_kimi`, `agent_gemini`, `agent_cursor`, `agent_opencode` |
 
 Colors default to plain ANSI, so the bar follows whatever theme your terminal

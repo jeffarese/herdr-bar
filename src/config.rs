@@ -5,6 +5,7 @@
 //! Values keep their JSON type where the Python release tested identity
 //! (`preview is True`), so a config means exactly what it used to.
 
+use crate::app::SCOPES;
 use crate::pyjson::{self, Map, Value};
 use crate::pystr;
 use std::path::PathBuf;
@@ -24,6 +25,8 @@ pub struct Config {
     pub lowercase_titles: bool,
     pub tab_status: bool,
     pub running_time: bool,
+    /// The filter the bar opens with: one of `SCOPES`, "all" unless set.
+    pub scope: &'static str,
 }
 
 /// Python's `int(value)` for whatever JSON put there; None where it raises.
@@ -87,6 +90,10 @@ impl Config {
             lowercase_titles: get("lowercase_titles").map(|v| v.is_true()).unwrap_or(false),
             tab_status: get("tab_status").map(|v| v.is_true()).unwrap_or(false),
             running_time: get("running_time").map(|v| !v.is_false()).unwrap_or(true),
+            scope: get("scope")
+                .and_then(|v| v.as_str())
+                .and_then(|name| SCOPES.iter().copied().find(|scope| *scope == name))
+                .unwrap_or("all"),
         }
     }
 
@@ -150,6 +157,17 @@ mod tests {
             for value in ["false", "\"true\"", "1", "null"] {
                 assert!(!pick(&with(key, value), key), "{} = {}", key, value);
             }
+        }
+    }
+
+    #[test]
+    fn scope_takes_the_filter_names_and_falls_back_to_all() {
+        assert_eq!(Config::default().scope, "all");
+        for name in SCOPES {
+            assert_eq!(with("scope", &format!("\"{}\"", name)).scope, *name);
+        }
+        for value in ["\"agents\"", "\"Agent\"", "\"@\"", "\"\"", "1", "true", "null", "[\"agent\"]"] {
+            assert_eq!(with("scope", value).scope, "all", "scope = {}", value);
         }
     }
 }

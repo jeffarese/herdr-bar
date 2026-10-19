@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Add `scope` (default `"all"`) to open the bar on a filter: `"agent"`,
+  `"pane"`, `"tab"` or `"blocked"` (#17). `backspace` on an empty query still
+  clears the filter, and `ctrl+u` now returns to the configured one instead of
+  everything. Any other value falls back to `"all"`.
+
 ## 0.9.1
 
 - Fix tab titles and tab status on Windows, broken in 0.9.0: the lock files
