@@ -187,7 +187,7 @@ fn call(name: &str, args: &[Value]) -> Value {
             let empty = Map::new();
             let owned = a(1).as_dict().unwrap_or(&empty);
             let mut out = Map::new();
-            for (tab, c) in auto_title::candidates(a(0), owned) {
+            for (tab, c) in auto_title::candidates(a(0), owned, false) {
                 let mut map = Map::new();
                 map.insert("identity", c.identity);
                 map.insert("agent", Value::str(c.agent));

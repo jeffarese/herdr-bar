@@ -139,6 +139,12 @@ useful terminal title yet. No extra model requests are made.
 - **Updates survive reopening.** Ownership is saved in the plugin state
   directory, tied to the agent session and terminal. Old custom names are not
   adopted just because they match a suggested title.
+- **New sessions.** By default a name stays with the session it was written
+  for, so after `/clear`, a restarted agent or a new terminal in the same pane
+  the tab keeps the old task title. Set `"follow_new_sessions": true` to let
+  the next session in that pane take the name over: the tab follows its task
+  title as soon as it has one. A tab you renamed stays yours, and an agent in
+  another pane never inherits the name.
 - **Starts when enabled.** Herdr's startup and agent-detection hooks start a
   single background watcher per server. Opening the bar also ensures it is running. After
   linking or enabling the plugin in an already running server, start it with
@@ -362,6 +368,7 @@ Optional. Write `config.json` in the plugin config directory
 | `tab_renaming_plugins` | `[]` | additional plugin IDs that suppress all automatic tab writes when enabled |
 | `auto_titles` | `true` | Claude and Codex task titles for unnamed tabs, suppressed by competing naming plugins; `false` opts out |
 | `lowercase_titles` | `false` | lowercase generated task titles; changes apply without a restart and custom names keep their case |
+| `follow_new_sessions` | `false` | `true` lets the next Claude or Codex session in a pane take over the task title written for the one before it, after `/clear`, a restart or a new terminal; a tab you renamed stays yours |
 | `tab_status` | `false` | opt in to agent logos and status glyphs in tab names; `false` restores labels still owned by the watcher |
 | `running_time` | `true` | per-row running time (`47s`, `2h04m`); `false` hides it and skips the per-pane `process_info`/`ps` reading, so the bar opens faster |
 | `scope` | `"all"` | the filter the bar opens with: `"agent"` (`@ agents`), `"pane"` (`% panes`), `"tab"` (`$ shells`), `"blocked"` (`! needs you`) or `"all"`; `backspace` on an empty query still clears it, and `ctrl+u` returns to it |

@@ -29,6 +29,9 @@ pub struct Config {
     pub scope: &'static str,
     /// Open with the row you are in selected, not the one you came from.
     pub select_current: bool,
+    /// Let the next session in a pane take over the task title written for
+    /// the one before it.
+    pub follow_new_sessions: bool,
 }
 
 /// Python's `int(value)` for whatever JSON put there; None where it raises.
@@ -97,6 +100,7 @@ impl Config {
                 .and_then(|name| SCOPES.iter().copied().find(|scope| *scope == name))
                 .unwrap_or("all"),
             select_current: get("select_current").map(|v| v.is_true()).unwrap_or(false),
+            follow_new_sessions: get("follow_new_sessions").map(|v| v.is_true()).unwrap_or(false),
         }
     }
 
@@ -180,6 +184,15 @@ mod tests {
         assert!(with("select_current", "true").select_current);
         for value in ["false", "\"true\"", "1", "null"] {
             assert!(!with("select_current", value).select_current, "select_current = {}", value);
+        }
+    }
+
+    #[test]
+    fn follow_new_sessions_takes_only_true() {
+        assert!(!Config::default().follow_new_sessions);
+        assert!(with("follow_new_sessions", "true").follow_new_sessions);
+        for value in ["false", "\"true\"", "1", "null"] {
+            assert!(!with("follow_new_sessions", value).follow_new_sessions, "follow_new_sessions = {}", value);
         }
     }
 }

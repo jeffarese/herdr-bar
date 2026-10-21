@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Add `follow_new_sessions` (default `false`) to let the next Claude or Codex
+  session in a pane take over the task title written for the one before it,
+  after `/clear`, a restart or a new terminal (#21). A tab you renamed stays
+  yours.
+
 ## 0.10.0
 
 - Add `scope` (default `"all"`) to open the bar on a filter: `"agent"`,

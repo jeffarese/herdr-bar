@@ -533,7 +533,10 @@ impl<'a> Lookup<'a> {
 }
 
 /// Default or plugin-owned tabs with one unambiguously identified agent.
-pub fn candidates(snapshot: &Value, owned: &Map) -> Vec<(String, Candidate)> {
+///
+/// With `follow_new_sessions`, a name this plugin wrote also passes to the
+/// next agent in the same pane: a new session, or a new terminal.
+pub fn candidates(snapshot: &Value, owned: &Map, follow_new_sessions: bool) -> Vec<(String, Candidate)> {
     let mut panes: Lookup = Lookup { entries: Vec::new() };
     for pane in snapshot.get("panes").list_or_empty() {
         let key = pane.get("pane_id");
@@ -619,7 +622,12 @@ pub fn candidates(snapshot: &Value, owned: &Map) -> Vec<(String, Candidate)> {
             // Hooks may report the session ID after the first terminal title.
             let earlier = Value::List(vec![kind.clone(), Value::Null, agent.get("pane_id").clone(), pane.get("terminal_id").clone()]);
             let identified_later = session_id.is_some() && py_eq(old_identity, &earlier);
-            if (!py_eq(old_identity, &identity) && !identified_later) || !py_eq(previous.get("title"), label) {
+            // `/clear`, a restarted agent and a respawned terminal all keep the pane.
+            let pane_id = agent.get("pane_id");
+            let same_pane = follow_new_sessions
+                && pane_id.as_str().is_some_and(|id| !id.is_empty())
+                && old_identity.list_or_empty().get(2).is_some_and(|old| py_eq(old, pane_id));
+            if (!py_eq(old_identity, &identity) && !identified_later && !same_pane) || !py_eq(previous.get("title"), label) {
                 continue;
             }
         }
@@ -644,6 +652,7 @@ pub fn candidates(snapshot: &Value, owned: &Map) -> Vec<(String, Candidate)> {
 pub struct AutoTitles {
     pub enabled: bool,
     pub lowercase_titles: bool,
+    pub follow_new_sessions: bool,
     pub reader: TranscriptReader,
     pub owned: Map,
     pub state_dir: Option<PathBuf>,
@@ -660,6 +669,7 @@ impl AutoTitles {
         let mut titles = AutoTitles {
             enabled: false,
             lowercase_titles: false,
+            follow_new_sessions: false,
             reader: TranscriptReader::default(),
             owned: Map::new(),
             state_dir: title_state_dir(),
@@ -673,6 +683,7 @@ impl AutoTitles {
         let transcript = pystr::lower(&transcript);
         self.enabled = config.auto_titles && !["0", "false", "no", "off"].contains(&transcript.as_str());
         self.lowercase_titles = config.lowercase_titles;
+        self.follow_new_sessions = config.follow_new_sessions;
     }
 
     /// Name tabs after their agents' tasks; errors only for local failures.
@@ -738,7 +749,7 @@ impl AutoTitles {
                 }
             }
         }
-        let found = candidates(&snapshot.borrow(), &self.owned);
+        let found = candidates(&snapshot.borrow(), &self.owned, self.follow_new_sessions);
         let live: Vec<String> = found.iter().filter_map(|(_, c)| c.session.clone()).collect();
         self.reader.retain(&live);
         for (tab_id, candidate) in found {
@@ -769,7 +780,7 @@ impl AutoTitles {
             // again immediately before writing, including custom pane names.
             let attempt = (|| -> Result<bool> {
                 snapshot = client.snapshot()?;
-                let fresh = candidates(&snapshot.borrow(), &self.owned);
+                let fresh = candidates(&snapshot.borrow(), &self.owned, self.follow_new_sessions);
                 if fresh.iter().find(|(id, _)| *id == tab_id).map(|(_, c)| c) != Some(&candidate) {
                     return Ok(false);
                 }
@@ -1571,6 +1582,65 @@ mod tests {
         t.agent("terminal_title_stripped", Value::str("Different session"));
         t.apply();
         assert_eq!(t.calls().len(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn following_lets_a_new_session_in_the_pane_take_over_the_name() {
+        let mut t = Titles::new();
+        t.titles.configure(&config(r#"{"follow_new_sessions": true}"#));
+        t.apply();
+        t.agent("agent_session", session_value(OTHER_SESSION));
+        let other = t.root.join("projects").join("-work-app").join(format!("{}.jsonl", OTHER_SESSION));
+        append(&other, &ai_title("Different session"));
+        t.apply();
+        assert_eq!(t.calls(), vec!["Repair login", "Different session"]);
+        // The name now belongs to the new session, even with following off.
+        t.titles.configure(&config(r#"{"follow_new_sessions": false}"#));
+        append(&other, &ai_title("Later task"));
+        t.apply();
+        assert_eq!(t.calls(), vec!["Repair login", "Different session", "Later task"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn following_lets_a_new_terminal_in_the_pane_take_over_the_name() {
+        let mut t = Titles::new();
+        t.titles.configure(&config(r#"{"follow_new_sessions": true}"#));
+        t.drop_session();
+        t.agent("terminal_title_stripped", Value::str("First task"));
+        t.apply();
+        t.edit(|s| first(s, "panes").insert("terminal_id", Value::str("replacement")));
+        t.agent("terminal_title_stripped", Value::str("Different task"));
+        t.apply();
+        assert_eq!(t.calls(), vec!["First task", "Different task"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn following_keeps_your_names_and_other_panes_out() {
+        let mut t = Titles::new();
+        t.titles.configure(&config(r#"{"follow_new_sessions": true}"#));
+        let other = t.root.join("projects").join("-work-app").join(format!("{}.jsonl", OTHER_SESSION));
+        append(&other, &ai_title("Different session"));
+        // A tab you renamed stays yours.
+        t.apply();
+        t.edit(|s| first(s, "tabs").insert("label", Value::str("My choice")));
+        t.agent("agent_session", session_value(OTHER_SESSION));
+        t.apply();
+        assert_eq!(t.calls(), vec!["Repair login"]);
+        assert_eq!(t.label(), Value::str("My choice"));
+        // An agent in another pane does not inherit the name.
+        t.titles.owned = Map::new();
+        t.reset(title_snapshot());
+        t.apply();
+        t.edit(|s| {
+            first(s, "panes").insert("pane_id", Value::str("w1:p10"));
+            first(s, "agents").insert("pane_id", Value::str("w1:p10"));
+        });
+        t.agent("agent_session", session_value(OTHER_SESSION));
+        t.apply();
+        assert_eq!(t.calls(), vec!["Repair login"]);
     }
 
     #[cfg(unix)]
