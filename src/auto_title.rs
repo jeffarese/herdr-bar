@@ -226,6 +226,65 @@ fn read_at(file: &mut File, at: u64, size: u64) -> std::io::Result<Vec<u8>> {
     Ok(data)
 }
 
+/// New bytes of an appended session file: `(read start, data, last newline)`.
+///
+/// Inodes can be reused after unlink, and a file may be rewritten in place,
+/// so the bytes behind the cursor are checked too. A failed read drops the
+/// path, so the next call opens or searches again from scratch.
+fn read_session(state: &mut Session) -> Option<(u64, Vec<u8>, Option<usize>)> {
+    let read = (|| -> std::io::Result<(u64, Vec<u8>, Option<usize>)> {
+        let mut handle = File::open(state.path.as_ref().unwrap())?;
+        // Race-free backstop for the pre-open is_file guards: the path could
+        // have been swapped for a FIFO or device between the stat and this
+        // open, so check the handle itself.
+        if !handle.metadata()?.is_file() {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "not a regular file"));
+        }
+        let (identity, size) = file_identity(&handle)?;
+        let boundary = read_at(&mut handle, state.offset.saturating_sub(64), state.offset.min(64))?;
+        if state.identity != Some(identity) || size < state.offset || boundary != state.boundary {
+            state.offset = 0;
+            state.title.clear();
+            state.opening.clear();
+            state.identity = Some(identity);
+        }
+        let start = state.offset.max(size.saturating_sub(MAX_SCAN));
+        let data = read_at(&mut handle, start, MAX_SCAN)?;
+        let end = data.iter().rposition(|&b| b == b'\n');
+        if let Some(end) = end {
+            let next_offset = start + end as u64 + 1;
+            state.boundary = read_at(&mut handle, next_offset.saturating_sub(64), next_offset.min(64))?;
+        }
+        Ok((start, data, end))
+    })();
+    match read {
+        Ok(found) => Some(found),
+        Err(_) => {
+            state.path = None;
+            state.offset = 0;
+            state.title.clear();
+            state.opening.clear();
+            None
+        }
+    }
+}
+
+/// Complete lines appended since the last read; advances the cursor.
+fn appended_lines<'a>(state: &mut Session, start: u64, data: &'a [u8], end: Option<usize>) -> Vec<&'a [u8]> {
+    let Some(end) = end else { return Vec::new() };
+    let mut lines: Vec<&[u8]> = data[..end].split(|&b| b == b'\n').collect();
+    if start > state.offset {
+        lines.remove(0); // tail starts inside a record
+    }
+    state.offset = start + end as u64 + 1;
+    lines
+}
+
+/// The recorded title, or the first prompt when no title was set.
+fn current_title(state: &Session) -> String {
+    if state.title.is_empty() { state.opening.clone() } else { state.title.clone() }
+}
+
 pub struct TranscriptReader {
     /// None re-reads the config on each search, so edits apply without a restart.
     pub roots: Option<Vec<PathBuf>>,
@@ -300,68 +359,89 @@ impl TranscriptReader {
             }
         }
         let state = self.sessions.get_mut(session_id).unwrap();
-        let read = (|| -> std::io::Result<(u64, Vec<u8>, Option<usize>)> {
-            let mut handle = File::open(state.path.as_ref().unwrap())?;
-            let (identity, size) = file_identity(&handle)?;
-            // Inodes can be reused after unlink, and a transcript may be
-            // rewritten in place. Check the bytes behind our cursor too.
-            let boundary = read_at(&mut handle, state.offset.saturating_sub(64), state.offset.min(64))?;
-            if state.identity != Some(identity) || size < state.offset || boundary != state.boundary {
-                state.offset = 0;
-                state.title.clear();
-                state.opening.clear();
-                state.identity = Some(identity);
-            }
-            let start = state.offset.max(size.saturating_sub(MAX_SCAN));
-            let data = read_at(&mut handle, start, MAX_SCAN)?;
-            let end = data.iter().rposition(|&b| b == b'\n');
-            if let Some(end) = end {
-                let next_offset = start + end as u64 + 1;
-                state.boundary = read_at(&mut handle, next_offset.saturating_sub(64), next_offset.min(64))?;
-            }
-            Ok((start, data, end))
-        })();
-        let (start, data, end) = match read {
-            Ok(found) => found,
-            Err(_) => {
-                state.path = None;
-                state.offset = 0;
-                state.title.clear();
-                state.opening.clear();
-                return String::new();
-            }
-        };
-        if let Some(end) = end {
-            let mut lines: Vec<&[u8]> = data[..end].split(|&b| b == b'\n').collect();
-            if start > state.offset {
-                lines.remove(0); // tail starts inside a record
-            }
-            state.offset = start + end as u64 + 1;
-            for line in lines {
-                let Ok(Value::Dict(record)) = pyjson::loads_bytes(line) else { continue };
-                let kind = record.get("type").unwrap_or(&NULL);
-                if kind.as_str() == Some("ai-title") {
-                    let title = title_of(record.get("aiTitle").unwrap_or(&NULL));
-                    if !title.is_empty() {
-                        state.title = title;
-                    }
-                } else if kind.as_str() == Some("user") && state.opening.is_empty() {
-                    let origin = record.get("origin").unwrap_or(&NULL);
-                    let message = record.get("message").unwrap_or(&NULL);
-                    if matches!(origin, Value::Dict(_))
-                        && origin.get("kind").as_str() == Some("human")
-                        && matches!(message, Value::Dict(_))
-                    {
-                        state.opening = opening(message.get("content"));
-                    }
+        let Some((start, data, end)) = read_session(state) else { return String::new() };
+        for line in appended_lines(state, start, &data, end) {
+            let Ok(Value::Dict(record)) = pyjson::loads_bytes(line) else { continue };
+            let kind = record.get("type").unwrap_or(&NULL);
+            if kind.as_str() == Some("ai-title") {
+                let title = title_of(record.get("aiTitle").unwrap_or(&NULL));
+                if !title.is_empty() {
+                    state.title = title;
+                }
+            } else if kind.as_str() == Some("user") && state.opening.is_empty() {
+                let origin = record.get("origin").unwrap_or(&NULL);
+                let message = record.get("message").unwrap_or(&NULL);
+                if matches!(origin, Value::Dict(_))
+                    && origin.get("kind").as_str() == Some("human")
+                    && matches!(message, Value::Dict(_))
+                {
+                    state.opening = opening(message.get("content"));
                 }
             }
         }
-        if state.title.is_empty() {
-            state.opening.clone()
-        } else {
-            state.title.clone()
+        current_title(state)
+    }
+}
+
+/// Pi session files, followed by the absolute path Herdr reports.
+///
+/// Pi needs no session-ID mapping: `agent_session` carries the file itself.
+/// The title is the name `/name` last set (a `session_info` entry), falling
+/// back to the first user message, as Claude's first-prompt fallback does.
+pub struct PiSessionReader {
+    sessions: HashMap<String, Session>,
+}
+
+impl Default for PiSessionReader {
+    fn default() -> Self {
+        PiSessionReader::new()
+    }
+}
+
+impl PiSessionReader {
+    pub fn new() -> PiSessionReader {
+        PiSessionReader { sessions: HashMap::new() }
+    }
+
+    pub fn retain(&mut self, live: &[String]) {
+        self.sessions.retain(|key, _| live.contains(key));
+    }
+
+    pub fn title(&mut self, path: &str) -> String {
+        if path.is_empty() {
+            return String::new();
         }
+        // Only ever follow a regular file: a FIFO or device would block the
+        // read, as `find`'s is_file guard does for Claude transcripts. This
+        // is the cheap early-out; `read_session` re-checks the opened handle
+        // as the race-free backstop.
+        if !std::fs::metadata(path).map(|m| m.is_file()).unwrap_or(false) {
+            return String::new();
+        }
+        let state = self.sessions.entry(path.to_string()).or_default();
+        if state.path.is_none() {
+            state.path = Some(PathBuf::from(path));
+        }
+        let Some((start, data, end)) = read_session(state) else { return String::new() };
+        for line in appended_lines(state, start, &data, end) {
+            let Ok(Value::Dict(record)) = pyjson::loads_bytes(line) else { continue };
+            let kind = record.get("type").unwrap_or(&NULL);
+            if kind.as_str() == Some("session_info") {
+                let title = title_of(record.get("name").unwrap_or(&NULL));
+                if !title.is_empty() {
+                    state.title = title;
+                }
+            } else if kind.as_str() == Some("message") && state.opening.is_empty() {
+                // Docs' UserMessage: role "user", content a string or
+                // (TextContent | ImageContent)[]; tool results are a role of
+                // their own. `opening` keeps text blocks only.
+                let message = record.get("message").unwrap_or(&NULL);
+                if matches!(message, Value::Dict(_)) && message.get("role").as_str() == Some("user") {
+                    state.opening = opening(message.get("content"));
+                }
+            }
+        }
+        current_title(state)
     }
 }
 
@@ -588,21 +668,39 @@ pub fn candidates(snapshot: &Value, owned: &Map, follow_new_sessions: bool) -> V
         }
         let session = first_truthy(&[agent.get("agent_session"), pane.get("agent_session")]);
         let kind = agent.get("agent");
-        let Some(kind_text) = kind.as_str().filter(|k| *k == "claude" || *k == "codex") else { continue };
+        let Some(kind_text) = kind.as_str().filter(|k| *k == "claude" || *k == "codex" || *k == "pi") else { continue };
         let suggested = agent_title(agent, pane);
         let mut session_id: Option<String> = None;
         if session.truthy() {
-            if !matches!(session, Value::Dict(_)) || !py_eq(session.get("agent"), kind) || session.get("kind").as_str() != Some("id") {
+            if !matches!(session, Value::Dict(_)) || !py_eq(session.get("agent"), kind) {
                 continue;
             }
-            match session.get("value").as_str() {
-                Some(value) if is_session_id(value) => session_id = Some(value.to_string()),
+            match (kind_text, session.get("kind").as_str()) {
+                // Claude and Codex report a session ID; the transcript search maps it.
+                ("claude" | "codex", Some("id")) => match session.get("value").as_str() {
+                    Some(value) if is_session_id(value) => session_id = Some(value.to_string()),
+                    _ => continue,
+                },
+                // Pi reports the session file itself; there is nothing to map.
+                // Any absolute .jsonl path is accepted: pi supports custom
+                // session locations, so this is not rooted at ~/.pi/agent.
+                // The suffix gate is conservative: `pi --session <path>` can
+                // name files with nonstandard or no extensions, and those
+                // sessions deliberately get no titles -- a miss, not a bypass.
+                ("pi", Some("path")) => match session.get("value").as_str() {
+                    Some(value) if Path::new(value).is_absolute() && value.ends_with(".jsonl") => {
+                        session_id = Some(value.to_string())
+                    }
+                    _ => continue,
+                },
                 _ => continue,
             }
-        } else if suggested.is_empty() || pane.get("terminal_id").as_str().is_none_or(|t| t.is_empty()) {
+        } else if kind_text == "pi" || suggested.is_empty() || pane.get("terminal_id").as_str().is_none_or(|t| t.is_empty()) {
             // Terminal titles are available even when Herdr has no session ID.
             // Only transcripts need that ID; terminal identity still prevents
             // a replacement pane from claiming a name we previously wrote.
+            // Pi's terminal title is only `π - <cwd>`, so without the session
+            // file there is no task title to follow.
             continue;
         }
         let session_value = session_id.clone().map(Value::str).unwrap_or(Value::Null);
@@ -654,6 +752,7 @@ pub struct AutoTitles {
     pub lowercase_titles: bool,
     pub follow_new_sessions: bool,
     pub reader: TranscriptReader,
+    pub pi_reader: PiSessionReader,
     pub owned: Map,
     pub state_dir: Option<PathBuf>,
 }
@@ -671,6 +770,7 @@ impl AutoTitles {
             lowercase_titles: false,
             follow_new_sessions: false,
             reader: TranscriptReader::default(),
+            pi_reader: PiSessionReader::default(),
             owned: Map::new(),
             state_dir: title_state_dir(),
         };
@@ -752,9 +852,17 @@ impl AutoTitles {
         let found = candidates(&snapshot.borrow(), &self.owned, self.follow_new_sessions);
         let live: Vec<String> = found.iter().filter_map(|(_, c)| c.session.clone()).collect();
         self.reader.retain(&live);
+        self.pi_reader.retain(&live);
         for (tab_id, candidate) in found {
             let mut title = candidate.suggested.clone();
-            if title.is_empty() && candidate.agent == "claude" {
+            if candidate.agent == "pi" {
+                // Pi's terminal title is only `π - <cwd>`; the session file is
+                // the source: its latest session name, else the first prompt.
+                title = match &candidate.session {
+                    Some(path) => self.pi_reader.title(path),
+                    None => String::new(),
+                };
+            } else if title.is_empty() && candidate.agent == "claude" {
                 if let Some(session) = &candidate.session {
                     title = self.reader.title(session, str_or_empty(&candidate.cwd));
                 }
@@ -1027,6 +1135,198 @@ mod tests {
         assert_eq!(moved.title(SESSION, "/elsewhere"), "Second account");
     }
 
+    // -- PiSessionTest --
+
+    /// A `session_info` entry, as pi's `/name` writes it.
+    fn pi_session_info(name: &str) -> String {
+        format!(
+            "{{\"type\": \"session_info\", \"id\": \"k1l2m3n4\", \"parentId\": null, \"timestamp\": \"2024-12-03T14:35:00.000Z\", \"name\": {}}}\n",
+            pyjson::dumps(&Value::str(name), false)
+        )
+    }
+
+    /// A `message` entry with string content, as pi persists user input.
+    fn pi_user_message(text: &str) -> String {
+        format!(
+            "{{\"type\": \"message\", \"id\": \"a1b2c3d4\", \"parentId\": null, \"timestamp\": \"2024-12-03T14:00:01.000Z\", \"message\": {{\"role\": \"user\", \"content\": {}, \"timestamp\": 1733234401000}}}}\n",
+            pyjson::dumps(&Value::str(text), false)
+        )
+    }
+
+    struct PiSession {
+        _temp: TempDir,
+        path: PathBuf,
+        reader: PiSessionReader,
+    }
+
+    impl PiSession {
+        fn new() -> PiSession {
+            let temp = TempDir::new();
+            let path = temp
+                .path()
+                .join("sessions")
+                .join("--work-app--")
+                .join("2024-12-03T14-00-00-000Z_12345678-1234-1234-1234-123456789abc.jsonl");
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            PiSession { _temp: temp, path, reader: PiSessionReader::new() }
+        }
+
+        fn write(&self, records: &[&str]) {
+            let text: String = records.iter().map(|r| format!("{}\n", r)).collect();
+            append(&self.path, &text);
+        }
+
+        fn title(&mut self) -> String {
+            let path = self.path.to_string_lossy().into_owned();
+            self.reader.title(&path)
+        }
+    }
+
+    #[test]
+    fn pi_latest_session_name_wins_over_first_prompt() {
+        let mut t = PiSession::new();
+        t.write(&[
+            r#"{"type": "session", "version": 3, "id": "12345678-1234-1234-1234-123456789abc", "timestamp": "2024-12-03T14:00:00.000Z", "cwd": "/work/app"}"#,
+            r#"{"type": "message", "id": "a1b2c3d4", "parentId": null, "timestamp": "2024-12-03T14:00:01.000Z", "message": {"role": "user", "content": "Fix login", "timestamp": 1733234401000}}"#,
+        ]);
+        assert_eq!(t.title(), "Fix login");
+        append(&t.path, &pi_session_info("Login repair"));
+        assert_eq!(t.title(), "Login repair");
+        append(&t.path, &pi_session_info("Repair OAuth callbacks"));
+        assert_eq!(t.title(), "Repair OAuth callbacks");
+    }
+
+    #[test]
+    fn pi_first_user_message_is_the_fallback() {
+        let mut t = PiSession::new();
+        t.write(&[
+            r#"{"type": "session", "version": 3, "id": "12345678-1234-1234-1234-123456789abc", "timestamp": "2024-12-03T14:00:00.000Z", "cwd": "/work/app"}"#,
+            r#"{"type": "message", "id": "a1b2c3d4", "parentId": null, "timestamp": "2024-12-03T14:00:01.000Z", "message": {"role": "system", "content": "", "timestamp": 1733234400500}}"#,
+            r#"{"type": "message", "id": "b2c3d4e5", "parentId": "a1b2c3d4", "timestamp": "2024-12-03T14:00:02.000Z", "message": {"role": "user", "content": [{"type": "image", "url": "data:image/png;base64,AA=="}, {"type": "text", "text": "Fix login\nMore detail"}], "timestamp": 1733234401000}}"#,
+        ]);
+        append(&t.path, &pi_user_message("Second prompt"));
+        assert_eq!(t.title(), "Fix login");
+    }
+
+    #[test]
+    fn pi_tool_results_and_other_roles_are_not_prompts() {
+        // Docs: tool results carry role "toolResult", a role of their own.
+        let mut t = PiSession::new();
+        t.write(&[
+            r#"{"type": "message", "id": "a1b2c3d4", "parentId": null, "timestamp": "2024-12-03T14:00:01.000Z", "message": {"role": "assistant", "content": [{"type": "text", "text": "Hi!"}], "timestamp": 1733234400500}}"#,
+            r#"{"type": "message", "id": "b2c3d4e5", "parentId": "a1b2c3d4", "timestamp": "2024-12-03T14:00:02.000Z", "message": {"role": "toolResult", "toolCallId": "call_1", "toolName": "bash", "content": [{"type": "text", "text": "secret output"}], "isError": false, "timestamp": 1733234400600}}"#,
+            r#"{"type": "custom_message", "id": "c3d4e5f6", "parentId": "b2c3d4e5", "timestamp": "2024-12-03T14:00:03.000Z", "customType": "my-extension", "content": "Injected context"}"#,
+        ]);
+        append(&t.path, &pi_user_message("Plain string prompt"));
+        assert_eq!(t.title(), "Plain string prompt");
+    }
+
+    #[test]
+    fn pi_empty_name_falls_back_to_first_prompt() {
+        let mut t = PiSession::new();
+        append(&t.path, &pi_user_message("Fix login"));
+        append(&t.path, &pi_session_info(""));
+        assert_eq!(t.title(), "Fix login");
+        // An empty /name never clears a name already set either.
+        append(&t.path, &pi_session_info("Real"));
+        assert_eq!(t.title(), "Real");
+        append(&t.path, &pi_session_info(""));
+        assert_eq!(t.title(), "Real");
+    }
+
+    #[test]
+    fn pi_partial_line_waits_until_complete_and_bad_records_are_ignored() {
+        let mut t = PiSession::new();
+        std::fs::write(&t.path, b"not json\n[]\n{\"type\":\"session_info\",\"name\":\"OAuth").unwrap();
+        assert_eq!(t.title(), "");
+        append(&t.path, " repair\"}\n");
+        assert_eq!(t.title(), "OAuth repair");
+    }
+
+    #[test]
+    fn pi_missing_and_empty_files_have_no_title_and_are_retried() {
+        let mut t = PiSession::new();
+        assert_eq!(t.title(), "");
+        std::fs::write(&t.path, "").unwrap();
+        assert_eq!(t.title(), "");
+        append(&t.path, &pi_session_info("Named later"));
+        assert_eq!(t.title(), "Named later");
+    }
+
+    #[test]
+    fn pi_truncated_or_replaced_file_does_not_reuse_old_title() {
+        let mut t = PiSession::new();
+        append(&t.path, &pi_session_info("Old title"));
+        assert_eq!(t.title(), "Old title");
+        std::fs::write(&t.path, "{}\n").unwrap();
+        assert_eq!(t.title(), "");
+        std::fs::remove_file(&t.path).unwrap();
+        append(&t.path, &pi_session_info("New title"));
+        assert_eq!(t.title(), "New title");
+    }
+
+    #[test]
+    fn pi_titles_are_sanitized() {
+        let mut t = PiSession::new();
+        append(&t.path, &pi_user_message("<system-reminder>context</system-reminder> Fix\u{1b}[31m login\u{7}\nsecond line"));
+        assert_eq!(t.title(), "Fix login");
+        append(&t.path, &pi_session_info("  Fix\u{1b}[31m\nlogin\u{7}  "));
+        assert_eq!(t.title(), "Fix login");
+    }
+
+    #[test]
+    fn pi_empty_path_has_no_title() {
+        let mut reader = PiSessionReader::new();
+        assert_eq!(reader.title(""), "");
+        assert!(reader.sessions.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pi_non_regular_files_are_never_followed() {
+        use std::os::unix::ffi::OsStrExt;
+        let mut t = PiSession::new();
+        let dir = t.path.parent().unwrap().to_path_buf();
+        assert_eq!(t.reader.title(&dir.to_string_lossy()), "");
+        // A FIFO would block the read forever.
+        let fifo = dir.join("fifo.jsonl");
+        let c_path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(c_path.as_ptr(), 0o644) }, 0);
+        assert_eq!(t.reader.title(&fifo.to_string_lossy()), "");
+        assert!(t.reader.sessions.is_empty());
+    }
+
+    #[test]
+    fn pi_scan_is_bounded_and_terminal_controls_removed() {
+        let mut t = PiSession::new();
+        let mut big = vec![b'x'; MAX_SCAN as usize + 100];
+        big.push(b'\n');
+        std::fs::write(&t.path, big).unwrap();
+        append(&t.path, &pi_session_info("\u{1b}[31mFix\u{1b}[0m\nlogin\u{7}"));
+        assert_eq!(t.title(), "Fix login");
+    }
+
+    #[test]
+    fn pi_same_inode_and_size_rewrite_is_detected() {
+        let mut t = PiSession::new();
+        append(&t.path, &pi_session_info("Old title"));
+        assert_eq!(t.title(), "Old title");
+        #[cfg(unix)]
+        let identity = {
+            use std::os::unix::fs::MetadataExt;
+            std::fs::metadata(&t.path).unwrap().ino()
+        };
+        let size = std::fs::metadata(&t.path).unwrap().len();
+        std::fs::write(&t.path, pi_session_info("New title")).unwrap();
+        assert_eq!(std::fs::metadata(&t.path).unwrap().len(), size);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            assert_eq!(std::fs::metadata(&t.path).unwrap().ino(), identity);
+        }
+        assert_eq!(t.title(), "New title");
+    }
+
     // -- ClaudeRootsTest --
 
     struct Roots {
@@ -1237,6 +1537,7 @@ mod tests {
         client: TabStatus,
         fake: fake::Fake,
         transcript: PathBuf,
+        pi_session: PathBuf,
         root: PathBuf,
         temp: TempDir,
         vars: EnvVars,
@@ -1252,6 +1553,7 @@ mod tests {
             std::fs::create_dir_all(&config).unwrap();
             let root = temp.path().join("claude");
             let transcript = root.join("projects").join("-work-app").join(format!("{}.jsonl", SESSION));
+            let pi_session = temp.path().join("pi").join("session.jsonl");
             let home = temp.path().join("home");
             let mut vars = EnvVars::new();
             vars.set("HERDR_AUTO_TITLE_TRANSCRIPT", "true")
@@ -1263,7 +1565,7 @@ mod tests {
             let fake = fake::Fake::start(title_snapshot());
             let herdr = crate::client::HerdrClient::new(Some(fake.path.to_string_lossy().into_owned()), 5.0, true);
             let client = TabStatus::new(crate::renaming_guard::AutomaticTabClient::new(herdr), None);
-            let mut out = Titles { titles: AutoTitles::new(), client, fake, transcript, root, temp, vars, _lock: lock };
+            let mut out = Titles { titles: AutoTitles::new(), client, fake, transcript, pi_session, root, temp, vars, _lock: lock };
             out.restart();
             out.set_title("Repair login");
             out
@@ -1339,6 +1641,20 @@ mod tests {
             });
         }
 
+        /// Turn the agent into pi, whose integration reports the session
+        /// file's absolute path instead of a session ID.
+        fn pi(&self) {
+            let path = self.pi_session.to_string_lossy().into_owned();
+            self.edit(|s| {
+                let agent = first(s, "agents");
+                agent.insert("agent", Value::str("pi"));
+                agent.insert(
+                    "agent_session",
+                    json(&format!(r#"{{"agent": "pi", "kind": "path", "value": {}}}"#, pyjson::dumps(&Value::str(path), false))),
+                );
+            });
+        }
+
         fn use_state_dir(&mut self) -> PathBuf {
             let state = self.temp.path().join("state");
             self.vars.set("HERDR_PLUGIN_STATE_DIR", &state);
@@ -1366,7 +1682,7 @@ mod tests {
         let mut t = Titles::new();
         t.titles.configure(&config(r#"{"lowercase_titles": true}"#));
         t.set_title("Repair ÉTÉ API");
-        for source in ["claude_transcript", "claude_terminal", "codex_terminal"] {
+        for source in ["claude_transcript", "claude_terminal", "codex_terminal", "pi_session"] {
             t.titles.owned = Map::new();
             t.reset(title_snapshot());
             if source.ends_with("terminal") {
@@ -1374,6 +1690,10 @@ mod tests {
             }
             if source == "codex_terminal" {
                 t.codex();
+            }
+            if source == "pi_session" {
+                t.pi();
+                append(&t.pi_session, &pi_session_info("Repair ÉTÉ API"));
             }
             t.apply();
             t.apply();
@@ -1427,6 +1747,103 @@ mod tests {
         t.agent("terminal_title_stripped", Value::str("Repair OAuth | app"));
         t.apply();
         assert_eq!(t.calls().last().unwrap(), "Repair OAuth");
+        assert!(!t.reader_called());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pi_tab_follows_session_name_and_first_prompt() {
+        let mut t = Titles::new();
+        t.pi();
+        append(&t.pi_session, &pi_user_message("Fix login\nMore detail"));
+        t.apply();
+        assert_eq!(t.calls(), vec!["Fix login"]);
+        append(&t.pi_session, &pi_session_info("Login repair"));
+        t.apply();
+        assert_eq!(t.calls(), vec!["Fix login", "Login repair"]);
+        assert!(!t.reader_called());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pi_terminal_title_is_never_a_task_title() {
+        let mut t = Titles::new();
+        t.pi();
+        t.agent("terminal_title_stripped", Value::str("π - /work/app"));
+        t.apply();
+        assert!(t.calls().is_empty());
+        // Without the session file there is nothing to follow either.
+        t.titles.owned = Map::new();
+        t.reset(title_snapshot());
+        t.edit(|s| {
+            let agent = first(s, "agents");
+            agent.insert("agent", Value::str("pi"));
+            agent.remove("agent_session");
+        });
+        t.agent("terminal_title_stripped", Value::str("π - /work/app"));
+        t.apply();
+        assert!(t.calls().is_empty());
+        assert!(!t.reader_called());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pi_manual_rename_opts_out_for_tab_lifetime() {
+        let mut t = Titles::new();
+        t.pi();
+        append(&t.pi_session, &pi_session_info("First task"));
+        t.apply();
+        assert_eq!(t.calls(), vec!["First task"]);
+        t.edit(|s| first(s, "tabs").insert("label", Value::str("My choice")));
+        append(&t.pi_session, &pi_session_info("Second task"));
+        t.apply();
+        assert_eq!(t.calls(), vec!["First task"]);
+        assert_eq!(t.label(), Value::str("My choice"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pi_replacement_session_cannot_claim_a_previously_owned_name() {
+        let mut t = Titles::new();
+        t.pi();
+        append(&t.pi_session, &pi_session_info("First task"));
+        t.apply();
+        let other = t.temp.path().join("pi").join("other.jsonl");
+        append(&other, &pi_session_info("Different session"));
+        let value = other.to_string_lossy().into_owned();
+        t.agent(
+            "agent_session",
+            json(&format!(r#"{{"agent": "pi", "kind": "path", "value": {}}}"#, pyjson::dumps(&Value::str(value), false))),
+        );
+        t.apply();
+        assert_eq!(t.calls().len(), 1);
+        // With following on, the new session in the same pane takes the name over.
+        t.titles.configure(&config(r#"{"follow_new_sessions": true}"#));
+        t.apply();
+        assert_eq!(t.calls(), vec!["First task", "Different session"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pi_session_must_be_a_matching_absolute_path() {
+        let mut t = Titles::new();
+        t.edit(|s| {
+            let agent = first(s, "agents");
+            agent.insert("agent", Value::str("pi"));
+            agent.insert("agent_session", json(r#"{"agent": "pi", "kind": "path", "value": "relative/session.jsonl"}"#));
+        });
+        t.apply();
+        // An absolute path that names no session file does not count either.
+        let text_file = t.temp.path().join("notes.txt").to_string_lossy().into_owned();
+        t.agent(
+            "agent_session",
+            json(&format!(r#"{{"agent": "pi", "kind": "path", "value": {}}}"#, pyjson::dumps(&Value::str(text_file), false))),
+        );
+        t.apply();
+        // A Claude-style session ID does not name a pi session either.
+        t.agent("agent_session", session_value(SESSION));
+        t.apply();
+        assert!(t.calls().is_empty());
         assert!(!t.reader_called());
     }
 
