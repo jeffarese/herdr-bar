@@ -467,12 +467,12 @@ pub(crate) fn agent_title(agent: &Value, pane: &Value) -> String {
 /// the segments between the app word and the folder are the name. A title that
 /// does not end in the folder was not written by pi, and names nothing.
 fn pi_title(title: &str, folder: &str) -> String {
-    let suffix = format!(" - {}", folder);
-    if folder.is_empty() || !pystr::casefold(title).ends_with(&pystr::casefold(&suffix)) {
+    // pi writes the folder verbatim, so it is matched exactly: a case-folded
+    // match could differ in length from the original and cut the name short.
+    if folder.is_empty() {
         return String::new();
     }
-    let keep = title.chars().count() - suffix.chars().count();
-    let head: String = title.chars().take(keep).collect();
+    let Some(head) = title.strip_suffix(&format!(" - {}", folder)) else { return String::new() };
     match head.split_once(" - ") {
         Some((_app, name)) => pystr::strip(name).to_string(),
         None => String::new(),
@@ -888,6 +888,10 @@ mod tests {
         assert_eq!(pi_title("Repair login", "app"), "");
         assert_eq!(pi_title("π - Repair login - other", "app"), "");
         assert_eq!(pi_title("π - app - Repair login", "app"), "");
+        // Folders whose case folding changes their length are matched whole.
+        assert_eq!(pi_title("π - Fix - straße", "straße"), "Fix");
+        assert_eq!(pi_title("π - Fix - straße", "STRASSE"), "");
+        assert_eq!(pi_title(" - ß", "ss"), "");
     }
 
     #[test]
