@@ -24,6 +24,15 @@ pub fn is_session_id(text: &str) -> bool {
         && groups.iter().zip(sizes).all(|(g, n)| g.len() == n && g.bytes().all(|b| b.is_ascii_hexdigit()))
 }
 
+/// An absolute transcript path, as pi's `kind: "path"` reports it.
+pub fn is_session_path(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    let absolute = text.starts_with('/')
+        || text.starts_with("\\\\")
+        || (bytes.len() >= 3 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && bytes[2] == b'\\');
+    absolute && text.ends_with(".jsonl") && !text.contains('\n')
+}
+
 pub fn title_state_dir() -> Option<PathBuf> {
     let directory = std::env::var_os("HERDR_PLUGIN_STATE_DIR").filter(|v| !v.is_empty())?;
     let socket_path = std::env::var_os("HERDR_SOCKET_PATH").filter(|v| !v.is_empty());
@@ -431,10 +440,14 @@ pub(crate) fn agent_title(agent: &Value, pane: &Value) -> String {
     let mut title = title_of(first_truthy(&[agent.get("terminal_title_stripped"), pane.get("terminal_title_stripped")]));
     let cwd = str_or_empty(first_truthy(&[agent.get("cwd"), pane.get("cwd")]));
     let folder = pyos::path_name(cwd);
-    let suffix = format!(" | {}", folder);
-    if !folder.is_empty() && title.ends_with(&suffix) {
-        let keep = title.chars().count() - (folder.chars().count() + 3);
-        title = pystr::strip(&title.chars().take(keep).collect::<String>()).to_string();
+    if agent.get("agent").as_str() == Some("pi") {
+        title = pi_title(&title, &folder);
+    } else {
+        let suffix = format!(" | {}", folder);
+        if !folder.is_empty() && title.ends_with(&suffix) {
+            let keep = title.chars().count() - (folder.chars().count() + 3);
+            title = pystr::strip(&title.chars().take(keep).collect::<String>()).to_string();
+        }
     }
     let folded = pystr::casefold(&title);
     let generic = ["", "codex", "claude", "claude code"];
@@ -446,6 +459,24 @@ pub(crate) fn agent_title(agent: &Value, pane: &Value) -> String {
         return String::new();
     }
     title
+}
+
+/// pi publishes `<app> - <folder>` until `/name` gives the session a name, and
+/// `<app> - <name> - <folder>` after that. The app word is `π`, or a fork's own
+/// name, so only the layout is assumed: the title has to end in the folder, and
+/// the segments between the app word and the folder are the name. A title that
+/// does not end in the folder was not written by pi, and names nothing.
+fn pi_title(title: &str, folder: &str) -> String {
+    let suffix = format!(" - {}", folder);
+    if folder.is_empty() || !pystr::casefold(title).ends_with(&pystr::casefold(&suffix)) {
+        return String::new();
+    }
+    let keep = title.chars().count() - suffix.chars().count();
+    let head: String = title.chars().take(keep).collect();
+    match head.split_once(" - ") {
+        Some((_app, name)) => pystr::strip(name).to_string(),
+        None => String::new(),
+    }
 }
 
 /// `re.sub(r"[^a-z0-9_-]+", "-", text)`
@@ -588,17 +619,26 @@ pub fn candidates(snapshot: &Value, owned: &Map, follow_new_sessions: bool) -> V
         }
         let session = first_truthy(&[agent.get("agent_session"), pane.get("agent_session")]);
         let kind = agent.get("agent");
-        let Some(kind_text) = kind.as_str().filter(|k| *k == "claude" || *k == "codex") else { continue };
+        let Some(kind_text) = kind.as_str().filter(|k| matches!(*k, "claude" | "codex" | "pi")) else { continue };
         let suggested = agent_title(agent, pane);
         let mut session_id: Option<String> = None;
         if session.truthy() {
-            if !matches!(session, Value::Dict(_)) || !py_eq(session.get("agent"), kind) || session.get("kind").as_str() != Some("id") {
+            if !matches!(session, Value::Dict(_)) || !py_eq(session.get("agent"), kind) {
                 continue;
             }
-            match session.get("value").as_str() {
-                Some(value) if is_session_id(value) => session_id = Some(value.to_string()),
-                _ => continue,
+            // pi's integration reports the transcript's absolute path instead of
+            // an opaque session id. Nothing is read from it here, so the path is
+            // only checked for the shape that makes it a usable identity.
+            let wanted = if kind_text == "pi" { "path" } else { "id" };
+            if session.get("kind").as_str() != Some(wanted) {
+                continue;
             }
+            let Some(value) = session.get("value").as_str() else { continue };
+            let valid = if kind_text == "pi" { is_session_path(value) } else { is_session_id(value) };
+            if !valid {
+                continue;
+            }
+            session_id = Some(value.to_string());
         } else if suggested.is_empty() || pane.get("terminal_id").as_str().is_none_or(|t| t.is_empty()) {
             // Terminal titles are available even when Herdr has no session ID.
             // Only transcripts need that ID; terminal identity still prevents
@@ -821,6 +861,33 @@ mod tests {
         assert!(is_session_id("0123abcd-0123-4567-89ab-0123456789AB"));
         assert!(!is_session_id("0123abcd-0123-4567-89ab-0123456789A"));
         assert!(!is_session_id("0123abcd-0123-4567-89ab"));
+    }
+
+    #[test]
+    fn session_paths() {
+        assert!(is_session_path("/home/me/.pi/agent/sessions/--work-app--/S.jsonl"));
+        assert!(is_session_path("C:\\Users\\me\\.pi\\sessions\\S.jsonl"));
+        assert!(is_session_path("\\\\server\\share\\S.jsonl"));
+        assert!(!is_session_path("sessions/S.jsonl"));
+        assert!(!is_session_path("/home/me/.pi/agent/sessions/S"));
+        assert!(!is_session_path("/home/me/S.jsonl\nignored"));
+    }
+
+    #[test]
+    fn pi_titles() {
+        assert_eq!(pi_title("π - Repair login - app", "app"), "Repair login");
+        assert_eq!(pi_title("pi - Repair login - app", "app"), "Repair login");
+        // A name may contain the separator, and keeps it back.
+        assert_eq!(pi_title("π - fix - the - bug - app", "app"), "fix - the - bug");
+        // So may the folder, which the suffix match keeps whole.
+        assert_eq!(pi_title("π - Repair login - my - app", "my - app"), "Repair login");
+        // No `/name` yet: the folder is all pi published.
+        assert_eq!(pi_title("π - app", "app"), "");
+        assert_eq!(pi_title("π", "app"), "");
+        // Not a shape pi writes, so nothing is inferred from it.
+        assert_eq!(pi_title("Repair login", "app"), "");
+        assert_eq!(pi_title("π - Repair login - other", "app"), "");
+        assert_eq!(pi_title("π - app - Repair login", "app"), "");
     }
 
     #[test]
@@ -1339,6 +1406,18 @@ mod tests {
             });
         }
 
+        /// pi reports its transcript's absolute path instead of a session id.
+        fn pi(&self) {
+            self.edit(|s| {
+                let agent = first(s, "agents");
+                agent.insert("agent", Value::str("pi"));
+                agent.insert(
+                    "agent_session",
+                    json(r#"{"agent": "pi", "kind": "path", "value": "/home/me/.pi/agent/sessions/--work-app--/S.jsonl"}"#),
+                );
+            });
+        }
+
         fn use_state_dir(&mut self) -> PathBuf {
             let state = self.temp.path().join("state");
             self.vars.set("HERDR_PLUGIN_STATE_DIR", &state);
@@ -1428,6 +1507,56 @@ mod tests {
         t.apply();
         assert_eq!(t.calls().last().unwrap(), "Repair OAuth");
         assert!(!t.reader_called());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pi_title_follows_the_session_name_and_ignores_the_folder() {
+        let mut t = Titles::new();
+        t.pi();
+        t.agent("terminal_title_stripped", Value::str("π - app"));
+        t.apply();
+        assert!(t.calls().is_empty());
+        t.agent("terminal_title_stripped", Value::str("π - Repair login - app"));
+        t.apply();
+        t.apply();
+        assert_eq!(t.calls().len(), 1);
+        t.agent("terminal_title_stripped", Value::str("π - Repair OAuth - app"));
+        t.apply();
+        assert_eq!(t.calls().last().unwrap(), "Repair OAuth");
+        assert!(!t.reader_called());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pi_tab_without_a_session_path_still_follows_the_terminal_title() {
+        let mut t = Titles::new();
+        t.pi();
+        t.drop_session();
+        t.agent("terminal_title_stripped", Value::str("π - Repair login - app"));
+        t.apply();
+        assert_eq!(t.calls().last().unwrap(), "Repair login");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pi_session_paths_must_be_absolute_transcripts() {
+        let mut t = Titles::new();
+        t.pi();
+        t.agent("terminal_title_stripped", Value::str("π - Repair login - app"));
+        for session in [
+            json(r#"{"agent": "pi", "kind": "path", "value": ""}"#),
+            json(r#"{"agent": "pi", "kind": "path", "value": "sessions/S.jsonl"}"#),
+            json(r#"{"agent": "pi", "kind": "path", "value": "/home/me/notes.txt"}"#),
+            session_value(SESSION),
+        ] {
+            t.agent("agent_session", session);
+            t.apply();
+        }
+        assert!(t.calls().is_empty());
+        t.pi();
+        t.apply();
+        assert_eq!(t.calls().last().unwrap(), "Repair login");
     }
 
     #[cfg(unix)]

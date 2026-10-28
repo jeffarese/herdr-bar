@@ -9,7 +9,7 @@ quick switcher, for the terminal.
 
 ![Herdr command bar with auto tab titles, Claude and Codex agent icons, and fuzzy search](assets/demo.gif)
 
-- **automatic titles for unnamed tabs** — follows Claude and Codex task titles to
+- **automatic titles for unnamed tabs** — follows Claude, Codex and Pi task titles to
   replace default tab numbers with the task title. Existing tab names, named
   panes and named agents stay yours, including names set by another plugin.
   Enabled by default when no competing naming plugin is detected.
@@ -119,12 +119,14 @@ strips a prefix from a label it has detected as belonging to another writer.
 
 ## Auto title: automatic tab naming
 
-With `"auto_titles": true` (the default), unnamed Claude and Codex tabs pick up their agent's
+With `"auto_titles": true` (the default), unnamed Claude, Codex and Pi tabs pick up their agent's
 task title automatically, even while the bar is closed. The watcher checks every two seconds and follows
-later task-title changes. Codex's trailing ` | folder` is removed; a bare folder
-or agent name is ignored until a task title is available. Claude's local
-transcript supplies its generated title or first human prompt when Herdr has no
-useful terminal title yet. No extra model requests are made.
+later task-title changes. Codex's trailing ` | folder` is removed, as is Pi's
+leading `π - ` and trailing ` - folder`, so a Pi tab named `/name Repair login`
+in `~/dev/app` reads `Repair login`; a bare folder or agent name is ignored
+until a task title is available. Claude's local transcript supplies its
+generated title or first human prompt when Herdr has no useful terminal title
+yet. No extra model requests are made.
 
 - **Lowercase titles.** Set `"lowercase_titles": true` in the plugin's
   `config.json` to lowercase generated task titles. The default is `false`.
@@ -380,9 +382,9 @@ Optional. Write `config.json` in the plugin config directory
 | `selection_background` | `"auto"` | `"auto"` asks the terminal for its background color, or set `"none"`, a hex value, or a 0-255 ANSI index |
 | `claude_config_dirs` | `[]` | extra Claude config directories (`"~/.claude-work"`) whose transcripts supply tab titles; changes apply without a restart |
 | `tab_renaming_plugins` | `[]` | additional plugin IDs that suppress all automatic tab writes when enabled |
-| `auto_titles` | `true` | Claude and Codex task titles for unnamed tabs, suppressed by competing naming plugins; `false` opts out |
+| `auto_titles` | `true` | Claude, Codex and Pi task titles for unnamed tabs, suppressed by competing naming plugins; `false` opts out |
 | `lowercase_titles` | `false` | lowercase generated task titles; changes apply without a restart and custom names keep their case |
-| `follow_new_sessions` | `false` | `true` lets the next Claude or Codex session in a pane take over the task title written for the one before it, after `/clear`, a restart or a new terminal; a tab you renamed stays yours |
+| `follow_new_sessions` | `false` | `true` lets the next Claude, Codex or Pi session in a pane take over the task title written for the one before it, after `/clear`, a restart or a new terminal; a tab you renamed stays yours |
 | `tab_status` | `false` | opt in to agent logos and status glyphs in tab names; `false` restores labels still owned by the watcher |
 | `running_time` | `true` | per-row running time (`47s`, `2h04m`); `false` hides it and skips the per-pane `process_info`/`ps` reading, so the bar opens faster |
 | `scope` | `"all"` | the filter the bar opens with: `"agent"` (`@ agents`), `"pane"` (`% panes`), `"tab"` (`$ shells`), `"blocked"` (`! needs you`), `"action"` (`> actions`, with `"actions": true`) or `"all"`; `backspace` on an empty query still clears it, and `ctrl+u` returns to it |
@@ -421,7 +423,7 @@ action asks. Running times come from `pane.process_info` plus `ps` (the process
 creation time on Windows), one reading per
 pane on the way onto the screen and then ticked locally, because a start time
 never moves. If the socket is unavailable it falls back to the `herdr` CLI.
-Eligible Claude and Codex tabs are updated through `tab.rename`, with a fresh
+Eligible Claude, Codex and Pi tabs are updated through `tab.rename`, with a fresh
 name and session check before each write. Claude transcript fallback uses a
 bounded local read. `--list` and `--doctor` remain read-only. A singleton
 background watcher runs when either tab feature is enabled and checks settings
