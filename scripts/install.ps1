@@ -22,7 +22,7 @@ Set-Location -LiteralPath $Root
 $BinDir = Join-Path $Root 'bin'
 $Target = Join-Path $BinDir 'herdr-bar.exe'
 $Alias = Join-Path $BinDir 'herdr-bar'
-$RepoUrl = 'https://github.com/jeffarese/herdr-bar'
+$RepoUrl = 'https://github.com/rob-64/herdr-bar'
 
 function Say([string]$Message) { [Console]::Error.WriteLine("herdr-bar: $Message") }
 
@@ -226,5 +226,5 @@ if (Invoke-SourceBuild) {
 Say "could not install herdr-bar ${Version}: no prebuilt binary could be downloaded"
 Say 'and building from source failed. Install Rust 1.88 or newer'
 Say '(https://rustup.rs), then reinstall the plugin:'
-Say '  herdr plugin install jeffarese/herdr-bar'
+Say '  herdr plugin install rob-64/herdr-bar'
 exit 1
