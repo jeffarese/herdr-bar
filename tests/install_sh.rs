@@ -172,7 +172,7 @@ fn missing_asset_fails() {
     let (ok, stderr) = s.run_install(None);
     assert!(!ok);
     assert!(stderr.contains("download failed"), "{stderr}");
-    assert!(stderr.contains("herdr plugin install jeffarese/herdr-bar"), "{stderr}");
+    assert!(stderr.contains("herdr plugin install rob-64/herdr-bar"), "{stderr}");
     assert!(!s.target().exists());
 }
 

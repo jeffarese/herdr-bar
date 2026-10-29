@@ -17,7 +17,7 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd) || exit 1
 cd "$ROOT" || exit 1
 BIN_DIR="$ROOT/bin"
 TARGET="$BIN_DIR/herdr-bar"
-REPO_URL="https://github.com/jeffarese/herdr-bar"
+REPO_URL="https://github.com/rob-64/herdr-bar"
 
 say() { printf 'herdr-bar: %s\n' "$*" >&2; }
 
@@ -160,5 +160,5 @@ fi
 say "could not install herdr-bar $version: no prebuilt binary could be downloaded"
 say "and building from source failed. Install Rust 1.88 or newer"
 say "(https://rustup.rs), then reinstall the plugin:"
-say "  herdr plugin install jeffarese/herdr-bar"
+say "  herdr plugin install rob-64/herdr-bar"
 exit 1

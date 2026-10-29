@@ -437,6 +437,17 @@ fn first_truthy<'a>(values: &[&'a Value]) -> &'a Value {
 }
 
 pub(crate) fn agent_title(agent: &Value, pane: &Value) -> String {
+    match agent.get("agent").as_str() {
+        Some("omo") => return omo_title(agent, pane),
+        // omo is built on pi, and Herdr reports its panes as either.
+        Some("pi") => {
+            let title = omo_title(agent, pane);
+            if !title.is_empty() {
+                return title;
+            }
+        }
+        _ => {}
+    }
     let mut title = title_of(first_truthy(&[agent.get("terminal_title_stripped"), pane.get("terminal_title_stripped")]));
     let cwd = str_or_empty(first_truthy(&[agent.get("cwd"), pane.get("cwd")]));
     let folder = pyos::path_name(cwd);
@@ -459,6 +470,13 @@ pub(crate) fn agent_title(agent: &Value, pane: &Value) -> String {
         return String::new();
     }
     title
+}
+
+/// omo's terminal title is `OmO - <activity>`, which changes with every tool
+/// call and names no task. The task omo reports to Herdr is the `omo_task`
+/// token, so that is the title, and the terminal title is never used.
+fn omo_title(agent: &Value, pane: &Value) -> String {
+    title_of(first_truthy(&[agent.get("tokens").get("omo_task"), pane.get("tokens").get("omo_task")]))
 }
 
 /// pi publishes `<app> - <folder>` until `/name` gives the session a name, and
@@ -619,7 +637,7 @@ pub fn candidates(snapshot: &Value, owned: &Map, follow_new_sessions: bool) -> V
         }
         let session = first_truthy(&[agent.get("agent_session"), pane.get("agent_session")]);
         let kind = agent.get("agent");
-        let Some(kind_text) = kind.as_str().filter(|k| matches!(*k, "claude" | "codex" | "pi")) else { continue };
+        let Some(kind_text) = kind.as_str().filter(|k| matches!(*k, "claude" | "codex" | "pi" | "omo")) else { continue };
         let suggested = agent_title(agent, pane);
         let mut session_id: Option<String> = None;
         if session.truthy() {
@@ -892,6 +910,22 @@ mod tests {
         assert_eq!(pi_title("π - Fix - straße", "straße"), "Fix");
         assert_eq!(pi_title("π - Fix - straße", "STRASSE"), "");
         assert_eq!(pi_title(" - ß", "ss"), "");
+    }
+
+    #[test]
+    fn omo_titles() {
+        let agent = |tokens: &str| pyjson::loads(&format!(r#"{{"agent": "omo", "terminal_title_stripped": "OmO - Running eval", "cwd": "/work/app", "tokens": {}}}"#, tokens)).unwrap();
+        let empty = Value::Dict(Map::new());
+        assert_eq!(agent_title(&agent(r#"{"omo_task": "Repair login"}"#), &empty), "Repair login");
+        assert_eq!(agent_title(&agent(r#"{"omo_task": "Repair\nlogin\u0007"}"#), &empty), "Repair login");
+        // No task yet: the activity in the terminal title is not one.
+        assert_eq!(agent_title(&agent(r#"{"omo_activity": "Running eval"}"#), &empty), "");
+        assert_eq!(agent_title(&agent("null"), &empty), "");
+        let pane = pyjson::loads(r#"{"tokens": {"omo_task": "From the pane"}}"#).unwrap();
+        assert_eq!(agent_title(&agent("{}"), &pane), "From the pane");
+        // An omo pane Herdr reports as pi still names its task.
+        let as_pi = pyjson::loads(r#"{"agent": "pi", "terminal_title_stripped": "OmO - Running eval", "cwd": "/work/app", "tokens": {"omo_task": "Repair login"}}"#).unwrap();
+        assert_eq!(agent_title(&as_pi, &empty), "Repair login");
     }
 
     #[test]
@@ -1422,6 +1456,20 @@ mod tests {
             });
         }
 
+        /// omo reports no session, and its task in the `omo_task` token.
+        fn omo(&self) {
+            self.edit(|s| {
+                let agent = first(s, "agents");
+                agent.insert("agent", Value::str("omo"));
+                agent.remove("agent_session");
+                agent.insert("terminal_title_stripped", Value::str("OmO - Running eval"));
+            });
+        }
+
+        fn omo_task(&self, task: &str) {
+            self.agent("tokens", json(&format!(r#"{{"omo_task": {}}}"#, pyjson::dumps(&Value::str(task), false))));
+        }
+
         fn use_state_dir(&mut self) -> PathBuf {
             let state = self.temp.path().join("state");
             self.vars.set("HERDR_PLUGIN_STATE_DIR", &state);
@@ -1561,6 +1609,38 @@ mod tests {
         t.pi();
         t.apply();
         assert_eq!(t.calls().last().unwrap(), "Repair login");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn omo_title_follows_the_task_token_and_ignores_the_terminal_title() {
+        let mut t = Titles::new();
+        t.omo();
+        t.apply();
+        assert!(t.calls().is_empty());
+        t.omo_task("Repair login");
+        t.apply();
+        t.apply();
+        assert_eq!(t.calls(), vec!["Repair login"]);
+        t.agent("terminal_title_stripped", Value::str("OmO - Reading files"));
+        t.omo_task("Repair OAuth");
+        t.apply();
+        assert_eq!(t.calls(), vec!["Repair login", "Repair OAuth"]);
+        assert!(!t.reader_called());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn omo_tab_renamed_by_hand_is_left_alone() {
+        let mut t = Titles::new();
+        t.omo();
+        t.omo_task("Repair login");
+        t.apply();
+        t.edit(|s| first(s, "tabs").insert("label", Value::str("My work")));
+        t.omo_task("Repair OAuth");
+        t.apply();
+        assert_eq!(t.calls(), vec!["Repair login"]);
+        assert_eq!(t.label(), Value::str("My work"));
     }
 
     #[cfg(unix)]
