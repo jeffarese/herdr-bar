@@ -20,7 +20,7 @@ checksum = "366ffbaa4442f4684d91e2cd7c5ea7c4ed8add41959a31447066e279e432b618"
 
 [[package]]
 name = "herdr-bar"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "ab_glyph",
  "libc",

@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.14.0
 
-- Add OmO as an `auto_titles` source. OmO's terminal title is
+- Add OmO as an `auto_titles` source (#27). OmO's terminal title is
   `OmO - <activity>`, which changes with every step and names no task, so the
   title is the `omo_task` token the omo-herdr extension reports to Herdr
   instead. OmO is built on Pi, and Herdr reports its panes as either `omo` or
