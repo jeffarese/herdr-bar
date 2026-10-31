@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Add OmO as an `auto_titles` source. OmO's terminal title is
+  `OmO - <activity>`, which changes with every step and names no task, so the
+  title is the `omo_task` token the omo-herdr extension reports to Herdr
+  instead. OmO is built on Pi, and Herdr reports its panes as either `omo` or
+  `pi`, so a `pi` pane carrying `omo_task` takes it too. OmO reports no agent
+  session, so an owned name is tied to the pane and terminal.
+
 ## 0.13.0
 
 - Add Pi as an `auto_titles` source (#25). Pi prints `<app> - <folder>` until
