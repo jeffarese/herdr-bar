@@ -121,13 +121,14 @@ strips a prefix from a label it has detected as belonging to another writer.
 
 With `"auto_titles": true` (the default), unnamed Claude, Codex, Pi, OmO and OpenCode tabs pick up their agent's
 task title automatically, even while the bar is closed. The watcher checks every two seconds and follows
-later task-title changes. Codex's trailing ` | folder` is removed, as is Pi's
-leading `π - ` and trailing ` - folder` and OpenCode's leading `OC | `, so a Pi
-tab named `/name Repair login` in `~/dev/app` reads `Repair login`; a bare
-folder or agent name is ignored until a task title is available. OmO tabs are
-named from the `omo_task` token
-that the [omo-herdr](https://github.com/mastertyko/omo-herdr) extension reports
-to Herdr, never from the `OmO - <activity>` terminal title, which changes with
+later task-title changes. Codex's trailing ` | folder` is removed, as are Pi's
+leading `π - ` and trailing ` - folder`, so a Pi tab named `/name Repair login`
+in `~/dev/app` reads `Repair login`; a bare folder or agent name is ignored
+until a task title is available. OpenCode's leading `OC | ` is removed too, and
+an OpenCode tab keeps its name while OpenCode shows only `OpenCode`, before the
+session has a title. OmO tabs are named from the `omo_task` token that the
+[omo-herdr](https://github.com/mastertyko/omo-herdr) extension reports to
+Herdr, never from the `OmO - <activity>` terminal title, which changes with
 every step. Claude's local transcript supplies its generated title or first
 human prompt when Herdr has no useful terminal title yet. No extra model
 requests are made.
