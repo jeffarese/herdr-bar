@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Add OpenCode as an `auto_titles` source (#29). OpenCode prints `OpenCode`
+  until the session has a title, and `OC | <title>` after that, so the title is
+  read from the terminal title Herdr already reports and no transcript is
+  opened. The session ID OpenCode's integration reports (`kind: "id"`,
+  `ses_<id>`) is the identity that keeps an owned name tied to one session.
+
 ## 0.14.0
 
 - Add OmO as an `auto_titles` source (#27). OmO's terminal title is

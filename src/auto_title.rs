@@ -33,6 +33,14 @@ pub fn is_session_path(text: &str) -> bool {
     absolute && text.ends_with(".jsonl") && !text.contains('\n')
 }
 
+/// An OpenCode session id (`ses_<id>`), as opencode's `kind: "id"` reports it.
+pub fn is_opencode_session_id(text: &str) -> bool {
+    match text.strip_prefix("ses_") {
+        Some(rest) => !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_alphanumeric()),
+        None => false,
+    }
+}
+
 pub fn title_state_dir() -> Option<PathBuf> {
     let directory = std::env::var_os("HERDR_PLUGIN_STATE_DIR").filter(|v| !v.is_empty())?;
     let socket_path = std::env::var_os("HERDR_SOCKET_PATH").filter(|v| !v.is_empty());
@@ -453,6 +461,8 @@ pub(crate) fn agent_title(agent: &Value, pane: &Value) -> String {
     let folder = pyos::path_name(cwd);
     if agent.get("agent").as_str() == Some("pi") {
         title = pi_title(&title, &folder);
+    } else if agent.get("agent").as_str() == Some("opencode") {
+        title = opencode_title(&title);
     } else {
         let suffix = format!(" | {}", folder);
         if !folder.is_empty() && title.ends_with(&suffix) {
@@ -493,6 +503,17 @@ fn pi_title(title: &str, folder: &str) -> String {
     let Some(head) = title.strip_suffix(&format!(" - {}", folder)) else { return String::new() };
     match head.split_once(" - ") {
         Some((_app, name)) => pystr::strip(name).to_string(),
+        None => String::new(),
+    }
+}
+
+/// opencode publishes `OpenCode` on the home screen and until the session has a
+/// non-default title, and `OC | <title>` after that. A title that does not
+/// start with `OC | ` was not given a session title by opencode, and names
+/// nothing.
+fn opencode_title(title: &str) -> String {
+    match title.strip_prefix("OC | ") {
+        Some(name) => pystr::strip(name).to_string(),
         None => String::new(),
     }
 }
@@ -637,7 +658,7 @@ pub fn candidates(snapshot: &Value, owned: &Map, follow_new_sessions: bool) -> V
         }
         let session = first_truthy(&[agent.get("agent_session"), pane.get("agent_session")]);
         let kind = agent.get("agent");
-        let Some(kind_text) = kind.as_str().filter(|k| matches!(*k, "claude" | "codex" | "pi" | "omo")) else { continue };
+        let Some(kind_text) = kind.as_str().filter(|k| matches!(*k, "claude" | "codex" | "pi" | "omo" | "opencode")) else { continue };
         let suggested = agent_title(agent, pane);
         let mut session_id: Option<String> = None;
         if session.truthy() {
@@ -652,7 +673,11 @@ pub fn candidates(snapshot: &Value, owned: &Map, follow_new_sessions: bool) -> V
                 continue;
             }
             let Some(value) = session.get("value").as_str() else { continue };
-            let valid = if kind_text == "pi" { is_session_path(value) } else { is_session_id(value) };
+            let valid = match kind_text {
+                "pi" => is_session_path(value),
+                "opencode" => is_opencode_session_id(value),
+                _ => is_session_id(value),
+            };
             if !valid {
                 continue;
             }
@@ -892,6 +917,15 @@ mod tests {
     }
 
     #[test]
+    fn opencode_session_ids() {
+        assert!(is_opencode_session_id("ses_e6513aa4fffebWsKLgqIbz7IX4"));
+        assert!(is_opencode_session_id("ses_0123456789abcdefABCDEF"));
+        assert!(!is_opencode_session_id("ses_"));
+        assert!(!is_opencode_session_id("ses_bad-char"));
+        assert!(!is_opencode_session_id("0123abcd-0123-4567-89ab-0123456789AB"));
+    }
+
+    #[test]
     fn pi_titles() {
         assert_eq!(pi_title("π - Repair login - app", "app"), "Repair login");
         assert_eq!(pi_title("pi - Repair login - app", "app"), "Repair login");
@@ -926,6 +960,17 @@ mod tests {
         // An omo pane Herdr reports as pi still names its task.
         let as_pi = pyjson::loads(r#"{"agent": "pi", "terminal_title_stripped": "OmO - Running eval", "cwd": "/work/app", "tokens": {"omo_task": "Repair login"}}"#).unwrap();
         assert_eq!(agent_title(&as_pi, &empty), "Repair login");
+    }
+
+    #[test]
+    fn opencode_titles() {
+        assert_eq!(opencode_title("OC | Repair login"), "Repair login");
+        assert_eq!(opencode_title("OC | Fix | pipe"), "Fix | pipe");
+        // Home screen or unnamed session: `OpenCode` is all opencode published.
+        assert_eq!(opencode_title("OpenCode"), "");
+        // Not a shape opencode writes for a titled session, so nothing is inferred.
+        assert_eq!(opencode_title("Repair login"), "");
+        assert_eq!(opencode_title("OC | "), "");
     }
 
     #[test]
@@ -1470,6 +1515,18 @@ mod tests {
             self.agent("tokens", json(&format!(r#"{{"omo_task": {}}}"#, pyjson::dumps(&Value::str(task), false))));
         }
 
+        /// opencode reports `ses_<id>` as its session id.
+        fn opencode(&self) {
+            self.edit(|s| {
+                let agent = first(s, "agents");
+                agent.insert("agent", Value::str("opencode"));
+                agent.insert(
+                    "agent_session",
+                    json(r#"{"agent": "opencode", "kind": "id", "value": "ses_e6513aa4fffebWsKLgqIbz7IX4"}"#),
+                );
+            });
+        }
+
         fn use_state_dir(&mut self) -> PathBuf {
             let state = self.temp.path().join("state");
             self.vars.set("HERDR_PLUGIN_STATE_DIR", &state);
@@ -1656,6 +1713,57 @@ mod tests {
         t.apply();
         assert_eq!(t.calls(), vec!["Repair login"]);
         assert!(!t.reader_called());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn opencode_title_follows_the_session_title_and_ignores_default_title() {
+        let mut t = Titles::new();
+        t.opencode();
+        t.agent("terminal_title_stripped", Value::str("OpenCode"));
+        t.apply();
+        assert!(t.calls().is_empty());
+        t.agent("terminal_title_stripped", Value::str("OC | Repair login"));
+        t.apply();
+        t.apply();
+        assert_eq!(t.calls().len(), 1);
+        t.agent("terminal_title_stripped", Value::str("OC | Repair OAuth"));
+        t.apply();
+        assert_eq!(t.calls().last().unwrap(), "Repair OAuth");
+        assert!(!t.reader_called());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn opencode_tab_without_a_session_id_still_follows_the_terminal_title() {
+        let mut t = Titles::new();
+        t.opencode();
+        t.drop_session();
+        t.agent("terminal_title_stripped", Value::str("OC | Repair login"));
+        t.apply();
+        assert_eq!(t.calls().last().unwrap(), "Repair login");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn opencode_session_ids_must_be_prefixed_ids() {
+        let mut t = Titles::new();
+        t.opencode();
+        t.agent("terminal_title_stripped", Value::str("OC | Repair login"));
+        for session in [
+            json(r#"{"agent": "opencode", "kind": "id", "value": ""}"#),
+            json(r#"{"agent": "opencode", "kind": "id", "value": "ses_"}"#),
+            json(r#"{"agent": "opencode", "kind": "id", "value": "12345678-1234-1234-1234-123456789abc"}"#),
+            json(r#"{"agent": "opencode", "kind": "path", "value": "ses_e6513aa4fffebWsKLgqIbz7IX4"}"#),
+            session_value(SESSION),
+        ] {
+            t.agent("agent_session", session);
+            t.apply();
+        }
+        assert!(t.calls().is_empty());
+        t.opencode();
+        t.apply();
+        assert_eq!(t.calls().last().unwrap(), "Repair login");
     }
 
     #[cfg(unix)]
