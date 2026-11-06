@@ -456,13 +456,16 @@ pub(crate) fn agent_title(agent: &Value, pane: &Value) -> String {
         }
         _ => {}
     }
-    let mut title = title_of(first_truthy(&[agent.get("terminal_title_stripped"), pane.get("terminal_title_stripped")]));
+    let terminal_title = first_truthy(&[agent.get("terminal_title_stripped"), pane.get("terminal_title_stripped")]);
+    let mut title = title_of(terminal_title);
     let cwd = str_or_empty(first_truthy(&[agent.get("cwd"), pane.get("cwd")]));
     let folder = pyos::path_name(cwd);
     if agent.get("agent").as_str() == Some("pi") {
         title = pi_title(&title, &folder);
     } else if agent.get("agent").as_str() == Some("opencode") {
         title = opencode_title(&title);
+    } else if agent.get("agent").as_str() == Some("copilot") {
+        title = copilot_title(str_or_empty(terminal_title));
     } else {
         let suffix = format!(" | {}", folder);
         if !folder.is_empty() && title.ends_with(&suffix) {
@@ -514,6 +517,15 @@ fn pi_title(title: &str, folder: &str) -> String {
 fn opencode_title(title: &str) -> String {
     match title.strip_prefix("OC | ") {
         Some(name) => pystr::strip(name).to_string(),
+        None => String::new(),
+    }
+}
+
+/// Copilot publishes `<intent> - GitHub Copilot`. Remove the suffix before
+/// truncating, or a long intent loses the marker that identifies it.
+fn copilot_title(title: &str) -> String {
+    match pystr::strip(title).strip_suffix(" - GitHub Copilot") {
+        Some(name) => title_str(name),
         None => String::new(),
     }
 }
@@ -658,7 +670,7 @@ pub fn candidates(snapshot: &Value, owned: &Map, follow_new_sessions: bool) -> V
         }
         let session = first_truthy(&[agent.get("agent_session"), pane.get("agent_session")]);
         let kind = agent.get("agent");
-        let Some(kind_text) = kind.as_str().filter(|k| matches!(*k, "claude" | "codex" | "pi" | "omo" | "opencode")) else { continue };
+        let Some(kind_text) = kind.as_str().filter(|k| matches!(*k, "claude" | "codex" | "pi" | "omo" | "opencode" | "copilot")) else { continue };
         let suggested = agent_title(agent, pane);
         let mut session_id: Option<String> = None;
         if session.truthy() {
@@ -971,6 +983,33 @@ mod tests {
         // Not a shape opencode writes for a titled session, so nothing is inferred.
         assert_eq!(opencode_title("Repair login"), "");
         assert_eq!(opencode_title("OC | "), "");
+    }
+
+    #[test]
+    fn copilot_titles() {
+        let title = |text: &str| {
+            let agent = pyjson::loads(&format!(
+                r#"{{"agent": "copilot", "cwd": "/work/app", "terminal_title_stripped": {}}}"#,
+                pyjson::dumps(&Value::str(text), false)
+            )).unwrap();
+            agent_title(&agent, &Value::Null)
+        };
+        for (text, expected) in [
+            ("Repair login - GitHub Copilot", "Repair login"),
+            ("Fix - the - bug - GitHub Copilot", "Fix - the - bug"),
+            ("Fix | app - GitHub Copilot", "Fix | app"),
+            ("Repair ÉTÉ API - GitHub Copilot", "Repair ÉTÉ API"),
+            (" Repair\nlogin\u{7} - GitHub Copilot", "Repair login"),
+            ("GitHub Copilot", ""),
+            ("Copilot CLI", ""),
+            ("app - GitHub Copilot", ""),
+            ("/work/app - GitHub Copilot", ""),
+            (" - GitHub Copilot", ""),
+            ("Repair login", ""),
+        ] {
+            assert_eq!(title(text), expected, "{}", text);
+        }
+        assert_eq!(title(&format!("{} - GitHub Copilot", "x".repeat(100))), format!("{}…", "x".repeat(79)));
     }
 
     #[test]
@@ -1489,6 +1528,16 @@ mod tests {
             });
         }
 
+        fn copilot(&self) {
+            self.edit(|s| {
+                let agent = first(s, "agents");
+                agent.insert("agent", Value::str("copilot"));
+                if let Some(Value::Dict(session)) = agent.get_mut("agent_session") {
+                    session.insert("agent", Value::str("copilot"));
+                }
+            });
+        }
+
         /// pi reports its transcript's absolute path instead of a session id.
         fn pi(&self) {
             self.edit(|s| {
@@ -1616,6 +1665,78 @@ mod tests {
         t.apply();
         assert_eq!(t.calls().last().unwrap(), "Repair OAuth");
         assert!(!t.reader_called());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn copilot_title_follows_the_task_and_ignores_default_titles() {
+        let mut t = Titles::new();
+        t.copilot();
+        for title in ["GitHub Copilot", "app - GitHub Copilot", "Inherited shell title"] {
+            t.agent("terminal_title_stripped", Value::str(title));
+            t.apply();
+        }
+        assert!(t.calls().is_empty());
+        t.agent("terminal_title_stripped", Value::str("Repair login - GitHub Copilot"));
+        t.apply();
+        t.apply();
+        assert_eq!(t.calls(), vec!["Repair login"]);
+        t.agent("terminal_title_stripped", Value::str("Repair OAuth - GitHub Copilot"));
+        t.apply();
+        assert_eq!(t.calls(), vec!["Repair login", "Repair OAuth"]);
+        assert!(!t.reader_called());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn copilot_sessionless_pane_title_survives_restart_and_yields_to_manual_rename() {
+        let mut t = Titles::new();
+        t.copilot();
+        t.drop_session();
+        t.use_state_dir();
+        t.restart();
+        t.edit(|s| first(s, "panes").insert("terminal_title_stripped", Value::str("Repair login - GitHub Copilot")));
+        t.apply();
+        assert_eq!(t.calls(), vec!["Repair login"]);
+        t.restart();
+        t.edit(|s| first(s, "panes").insert("terminal_title_stripped", Value::str("Repair OAuth - GitHub Copilot")));
+        t.apply();
+        assert_eq!(t.calls(), vec!["Repair login", "Repair OAuth"]);
+        t.edit(|s| first(s, "tabs").insert("label", Value::str("My task")));
+        t.edit(|s| first(s, "panes").insert("terminal_title_stripped", Value::str("New task - GitHub Copilot")));
+        t.apply();
+        assert_eq!(t.calls().len(), 2);
+        assert_eq!(t.label(), Value::str("My task"));
+        assert!(!t.reader_called());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn copilot_session_identity_is_validated_and_replacement_requires_opt_in() {
+        let mut t = Titles::new();
+        t.copilot();
+        t.agent("terminal_title_stripped", Value::str("Repair login - GitHub Copilot"));
+        for session in [
+            json(r#"{"agent": "copilot", "kind": "id", "value": "invalid"}"#),
+            json(r#"{"agent": "copilot", "kind": "path", "value": "/work/session.jsonl"}"#),
+            session_value(SESSION),
+        ] {
+            t.agent("agent_session", session);
+            t.apply();
+        }
+        assert!(t.calls().is_empty());
+        t.agent("agent_session", session_value(SESSION));
+        t.copilot();
+        t.apply();
+        assert_eq!(t.calls(), vec!["Repair login"]);
+        t.agent("agent_session", session_value(OTHER_SESSION));
+        t.copilot();
+        t.agent("terminal_title_stripped", Value::str("New task - GitHub Copilot"));
+        t.apply();
+        assert_eq!(t.calls().len(), 1);
+        t.titles.configure(&config(r#"{"follow_new_sessions": true}"#));
+        t.apply();
+        assert_eq!(t.calls(), vec!["Repair login", "New task"]);
     }
 
     #[cfg(unix)]
