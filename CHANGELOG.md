@@ -2,10 +2,13 @@
 
 ## Unreleased
 
-- Add GitHub Copilot CLI as an `auto_titles` source. Task names come from
-  `<intent> - GitHub Copilot` terminal titles, with the branding removed.
-  Session IDs, when available, keep ownership tied to the same session;
-  otherwise the pane and terminal identify it. No transcripts are read.
+- Add GitHub Copilot CLI as an `auto_titles` source (#30). Copilot sets its
+  terminal title to `<session title> - GitHub Copilot`, so the title is read
+  from the snapshot Herdr already reports, with the suffix removed, and no
+  transcript is opened. A bare `GitHub Copilot`, a folder name or a title
+  inherited from the shell names nothing and is ignored. Copilot's session ID,
+  when Herdr reports one, keeps an owned name tied to one session; otherwise
+  the pane and terminal identify it.
 - Add OpenCode as an `auto_titles` source (#29). OpenCode prints `OpenCode`
   until the session has a title, and `OC | <title>` after that, so the title is
   read from the terminal title Herdr already reports and no transcript is

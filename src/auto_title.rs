@@ -521,8 +521,11 @@ fn opencode_title(title: &str) -> String {
     }
 }
 
-/// Copilot publishes `<intent> - GitHub Copilot`. Remove the suffix before
-/// truncating, or a long intent loses the marker that identifies it.
+/// Copilot publishes `<session title> - GitHub Copilot`. A title without the
+/// suffix, such as the bare `GitHub Copilot` or one inherited from the shell,
+/// names nothing; `<folder> - GitHub Copilot` is rejected with the other
+/// folder titles. The suffix is removed before truncating, or a long title
+/// would lose the marker.
 fn copilot_title(title: &str) -> String {
     match pystr::strip(title).strip_suffix(" - GitHub Copilot") {
         Some(name) => title_str(name),
