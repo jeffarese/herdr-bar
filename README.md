@@ -7,6 +7,10 @@ agent icons, and fast session switching.** Press Cmd+K, type a few letters of a
 task, tab, pane, agent, repo or branch, and Enter takes you there. Like the Slack
 quick switcher, for the terminal.
 
+> **Using the new Herdr desktop app?** It has its own extension system and does
+> not run TUI plugins. Get the same quick switcher there with
+> [herdr-bar-mod](https://github.com/jeffarese/herdr-bar-mod).
+
 ![Herdr command bar with auto tab titles, Claude and Codex agent icons, and fuzzy search](assets/demo.gif)
 
 - **automatic titles for unnamed tabs** — follows Claude, Codex, Pi, OmO, OpenCode and Copilot task titles to
