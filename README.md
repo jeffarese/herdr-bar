@@ -2,14 +2,17 @@
 
 [![ci](https://github.com/jeffarese/herdr-bar/actions/workflows/ci.yml/badge.svg)](https://github.com/jeffarese/herdr-bar/actions/workflows/ci.yml)
 
+> [!TIP]
+> ### Using the new Herdr desktop app? Get [herdr-bar-mod](https://github.com/jeffarese/herdr-bar-mod)
+> The app has its own extension system and does not run TUI plugins.
+> **[herdr-bar-mod](https://github.com/jeffarese/herdr-bar-mod)** brings the same
+> Cmd+K quick switcher to it: live status, fuzzy search, a terminal preview, and
+> agents on your other machines. [Watch the demo →](https://github.com/jeffarese/herdr-bar-mod#readme)
+
 **A [Herdr](https://herdr.dev) plugin for automatic tab titles, recognizable
 agent icons, and fast session switching.** Press Cmd+K, type a few letters of a
 task, tab, pane, agent, repo or branch, and Enter takes you there. Like the Slack
 quick switcher, for the terminal.
-
-> **Using the new Herdr desktop app?** It has its own extension system and does
-> not run TUI plugins. Get the same quick switcher there with
-> [herdr-bar-mod](https://github.com/jeffarese/herdr-bar-mod).
 
 ![Herdr command bar with auto tab titles, Claude and Codex agent icons, and fuzzy search](assets/demo.gif)
 
