@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Show a Pi row's session name as its summary, not its whole terminal title
+  (#31). Pi's title is `<app> - <name> - <folder>`, and the folder already has
+  its own column, so the summary is the name `auto_titles` reads from it: it
+  matches the tab title, and the row drops it when the two are the same. An
+  OmO pane Herdr reports as Pi keeps its activity as the summary, as one
+  reported as OmO does.
 - Add GitHub Copilot CLI as an `auto_titles` source (#30). Copilot sets its
   terminal title to `<session title> - GitHub Copilot`, so the title is read
   from the snapshot Herdr already reports, with the suffix removed, and no
