@@ -6,6 +6,7 @@
 //! those higher-level rows is intentional. Plugin action rows, when the
 //! config asks for them, come from Herdr's plugin list instead.
 
+use crate::auto_title;
 use crate::fuzzy::Prepared;
 use crate::pyjson::{self, Value};
 use crate::pyos;
@@ -439,10 +440,20 @@ pub fn build_items(snapshot: &Value) -> Vec<Item> {
                     pane.get("foreground_cwd"),
                     pane.get("cwd"),
                 ]));
+                // pi wraps its session name as `π - <name> - <folder>`; show the
+                // name the tab title is read from, not the whole terminal title.
+                // An omo pane Herdr reports as pi has no such name, and keeps
+                // the activity its terminal title shows, as an omo row does.
+                let task = if agent.get("agent").as_str() == Some("pi") {
+                    Value::str(auto_title::terminal_title_name(agent, pane))
+                } else {
+                    Value::Null
+                };
                 let summary = first(&[
                     pane.get("title"),
                     agent.get("title"),
                     pane.get("label"),
+                    &task,
                     agent.get("terminal_title_stripped"),
                     pane.get("terminal_title_stripped"),
                 ]);
@@ -748,6 +759,45 @@ mod tests {
             let item = by_kind(&build_items(&snapshot), KIND_AGENT).remove(0);
             assert_eq!(item.detail, expected, "summary {summary:?}");
             assert_eq!(item.title, "Fix search", "summary {summary:?}");
+        }
+    }
+
+    #[test]
+    fn pi_summary_drops_the_app_word_and_folder() {
+        let mut snapshot = pyjson::loads(
+            r#"{"workspaces": [{"workspace_id": "w1", "label": "Tools"}],
+                "tabs": [{"tab_id": "t1", "workspace_id": "w1", "label": "Fix search"}],
+                "panes": [{"pane_id": "p1", "tab_id": "t1", "cwd": "/work/app"}],
+                "agents": [{"pane_id": "p1", "tab_id": "t1", "agent": "pi", "cwd": "/work/app"}]}"#,
+        )
+        .unwrap();
+        for (terminal_title, expected) in [
+            ("π - Fix search - app", ""),
+            ("π - Ship CLI changes - app", "Ship CLI changes"),
+        ] {
+            set(&mut snapshot, "agents", 0, "terminal_title_stripped", Value::str(terminal_title));
+            let item = by_kind(&build_items(&snapshot), KIND_AGENT).remove(0);
+            assert_eq!(item.detail, expected, "terminal title {terminal_title:?}");
+            assert_eq!(item.title, "Fix search", "terminal title {terminal_title:?}");
+        }
+    }
+
+    #[test]
+    fn omo_reported_as_pi_keeps_its_activity() {
+        // The tab title comes from `omo_task`; the summary stays omo's
+        // activity, whichever kind Herdr reports the pane as.
+        for kind in ["pi", "omo"] {
+            let snapshot = pyjson::loads(&format!(
+                r#"{{"workspaces": [{{"workspace_id": "w1", "label": "Tools"}}],
+                    "tabs": [{{"tab_id": "t1", "workspace_id": "w1", "label": "Repair login"}}],
+                    "panes": [{{"pane_id": "p1", "tab_id": "t1", "cwd": "/work/app"}}],
+                    "agents": [{{"pane_id": "p1", "tab_id": "t1", "agent": "{kind}", "cwd": "/work/app",
+                                 "terminal_title_stripped": "OmO - Running eval",
+                                 "tokens": {{"omo_task": "Repair login"}}}}]}}"#
+            ))
+            .unwrap();
+            let item = by_kind(&build_items(&snapshot), KIND_AGENT).remove(0);
+            assert_eq!(item.detail, "OmO - Running eval", "reported as {kind}");
         }
     }
 

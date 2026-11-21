@@ -456,6 +456,14 @@ pub(crate) fn agent_title(agent: &Value, pane: &Value) -> String {
         }
         _ => {}
     }
+    terminal_title_name(agent, pane)
+}
+
+/// The name an agent's terminal title carries, or "" when it names nothing.
+/// Unlike `agent_title`, a pi pane's omo task is not read, so an omo pane
+/// Herdr reports as pi is left to its terminal title, as one reported as omo
+/// is.
+pub(crate) fn terminal_title_name(agent: &Value, pane: &Value) -> String {
     let terminal_title = first_truthy(&[agent.get("terminal_title_stripped"), pane.get("terminal_title_stripped")]);
     let mut title = title_of(terminal_title);
     let cwd = str_or_empty(first_truthy(&[agent.get("cwd"), pane.get("cwd")]));
