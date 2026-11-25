@@ -53,6 +53,7 @@ pub const DEFAULTS: &[(&str, &str)] = &[
     ("agent_gemini", "#4285F4"),
     ("agent_cursor", "#A78BFA"),
     ("agent_opencode", "#38BDF8"),
+    ("agent_agy", "#7298F3"),
 ];
 
 pub fn status_glyph(status: &str) -> &'static str {
