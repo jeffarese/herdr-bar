@@ -640,6 +640,10 @@ pub fn scrollbar_column(total: isize, visible: isize, offset: isize, height: isi
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::{score_item, Memo, PLACEHOLDER};
+    use crate::fuzzy::{split_query, Term};
+    use crate::items::build_items;
+    use crate::textutil::{strip_ansi, visible_width};
 
     #[test]
     fn agy_has_its_own_color_role() {
@@ -647,10 +651,6 @@ mod tests {
         assert_eq!(agent_role(Some("AGY")), "agent_agy");
         assert!(crate::theme::DEFAULTS.iter().any(|(role, _)| *role == "agent_agy"));
     }
-    use crate::app::{score_item, Memo, PLACEHOLDER};
-    use crate::fuzzy::{split_query, Term};
-    use crate::items::build_items;
-    use crate::textutil::{strip_ansi, visible_width};
 
     fn theme() -> Theme {
         Theme::new(None, None, None)
