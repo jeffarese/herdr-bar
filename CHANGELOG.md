@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Add `"layout": "tree"`, which groups the rows under their workspace with
+  `├─`/`└─` branches, as Herdr's Go to picker does, while keeping the preview.
+  Groups follow Herdr's workspace order, or their best match while searching;
+  rows keep Herdr's tab order inside a group. The bar still opens on the row
+  the flat list would put first, so Enter goes to the same place in both
+  layouts. Headings added for context are not counted as matches. The default
+  stays `"list"`.
 - Show a Pi row's session name as its summary, not its whole terminal title
   (#31). Pi's title is `<app> - <name> - <folder>`, and the folder already has
   its own column, so the summary is the name `auto_titles` reads from it: it

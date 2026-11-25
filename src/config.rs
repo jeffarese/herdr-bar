@@ -34,6 +34,9 @@ pub struct Config {
     pub follow_new_sessions: bool,
     /// List plugin actions as rows the bar can run.
     pub actions: bool,
+    /// `"list"`, the flat alt-tab order, or `"tree"`: rows grouped under
+    /// their workspace.
+    pub layout: &'static str,
 }
 
 /// Python's `int(value)` for whatever JSON put there; None where it raises.
@@ -107,6 +110,7 @@ impl Config {
             select_current: get("select_current").map(|v| v.is_true()).unwrap_or(false),
             follow_new_sessions: get("follow_new_sessions").map(|v| v.is_true()).unwrap_or(false),
             actions,
+            layout: if get("layout").and_then(|v| v.as_str()) == Some("tree") { "tree" } else { "list" },
         }
     }
 
@@ -142,6 +146,10 @@ impl Config {
     }
 
     pub fn wants_workspaces(&self, workspace_count: usize) -> bool {
+        // The tree is headed by its workspaces.
+        if self.layout == "tree" {
+            return workspace_count > 1;
+        }
         if self.workspaces.is_true() {
             return true;
         }
@@ -182,6 +190,22 @@ mod tests {
         for value in ["\"agents\"", "\"Agent\"", "\"@\"", "\"\"", "1", "true", "null", "[\"agent\"]"] {
             assert_eq!(with("scope", value).scope, "all", "scope = {}", value);
         }
+    }
+
+    #[test]
+    fn layout_is_list_unless_tree() {
+        assert_eq!(Config::default().layout, "list");
+        assert_eq!(with("layout", "\"tree\"").layout, "tree");
+        for value in ["\"list\"", "\"Tree\"", "true", "1", "null"] {
+            assert_eq!(with("layout", value).layout, "list", "layout = {}", value);
+        }
+        let tree = with("layout", "\"tree\"");
+        assert!(tree.wants_workspaces(2));
+        assert!(!tree.wants_workspaces(1));
+        let tree_without = Config::from_values(
+            pyjson::loads(r#"{"layout": "tree", "workspaces": false}"#).unwrap().as_dict().unwrap(),
+        );
+        assert!(tree_without.wants_workspaces(2));
     }
 
     #[test]
