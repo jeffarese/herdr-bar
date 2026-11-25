@@ -344,19 +344,24 @@ impl Bar {
     }
 
     pub fn rebuild(&mut self, keep_key: Option<String>) {
+        let mut keep_key = keep_key.filter(|key| !key.is_empty());
         let rows = self.filter();
         if self.tree_layout() {
             // The row the flat list would put first: the best match, or with
             // no query the place you came from. The tree moves it, so the
-            // selection follows it there instead of landing on a heading.
+            // selection follows it there instead of landing on a heading --
+            // also when a refresh takes away the row that was selected.
             let preferred = rows.first().map(|row| row.item);
             let (rows, added) = self.tree(rows);
             self.rows = rows;
             self.tree_headers = added;
-            if keep_key.is_none() && self.selected == 0 {
-                if let Some(preferred) = preferred {
-                    self.selected = self.rows.iter().position(|row| row.item == preferred).unwrap_or(0);
-                }
+            let lost = match &keep_key {
+                Some(key) => !self.rows.iter().any(|row| &self.pool[row.item].key == key),
+                None => self.selected == 0,
+            };
+            if lost {
+                keep_key = None;
+                self.selected = preferred.and_then(|item| self.rows.iter().position(|row| row.item == item)).unwrap_or(0);
             }
         } else {
             self.rows = rows;
@@ -2041,6 +2046,38 @@ mod tests {
         assert!(!header.contains("├─") && !header.contains("space"), "{header}");
         assert!(lines.iter().any(|line| line.contains("├─ ")));
         assert_eq!(lines.iter().filter(|line| line.contains("└─ ")).count(), 2);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn tree_selection_falls_back_to_the_lists_row_when_its_row_goes() {
+        // w2's last tab, its pane and its agent close.
+        let mut snapshot = testutil::snapshot();
+        for (list, field, id) in [("tabs", "tab_id", "w2:t2"), ("panes", "pane_id", "w2:p2"), ("agents", "pane_id", "w2:p2")] {
+            if let Some(Value::List(entries)) = snapshot.as_dict_mut().and_then(|s| s.get_mut(list)) {
+                entries.retain(|entry| entry.get(field).as_str() != Some(id));
+            }
+        }
+        let list = bar_with(snapshot.clone(), Config::default(), Recents::new(None));
+        let expected = list.bar.selected_item().key.clone();
+        drop(list);
+        let mut t = tree_bar();
+        t.bar.selected = t.bar.rows.iter().position(|row| t.bar.pool[row.item].key == "w2:p2").unwrap();
+        t.bar.apply(&snapshot, false);
+        assert_eq!(t.bar.selected_item().key, expected);
+        assert_ne!(t.bar.rows[t.bar.selected].tree, Tree::Header);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn tree_rows_keep_the_list_width() {
+        let mut t = tree_bar();
+        for width in (40..140).step_by(7) {
+            let layout = compute_layout(width, 30, false);
+            let widths: Vec<usize> = t.bar.list_rows(&layout).iter().take(t.bar.rows.len()).map(|line| crate::textutil::visible_width(line)).collect();
+            assert!(widths.iter().all(|w| *w == widths[0]), "width {width}: {widths:?}");
+            assert!(t.bar.rows.iter().any(|row| row.tree == Tree::Last));
+        }
     }
 
     // -- ScopeTest --------------------------------------------------------------
