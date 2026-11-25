@@ -16,7 +16,7 @@ quick switcher, for the terminal.
 
 ![Herdr command bar with auto tab titles, Claude and Codex agent icons, and fuzzy search](assets/demo.gif)
 
-- **automatic titles for unnamed tabs** — follows Claude, Codex, Pi, OmO, OpenCode and Copilot task titles to
+- **automatic titles for unnamed tabs** — follows Claude, Codex, Pi, OmO, OpenCode, Copilot and Antigravity task titles to
   replace default tab numbers with the task title. Existing tab names, named
   panes and named agents stay yours, including names set by another plugin.
   Enabled by default when no competing naming plugin is detected.
@@ -126,7 +126,7 @@ strips a prefix from a label it has detected as belonging to another writer.
 
 ## Auto title: automatic tab naming
 
-With `"auto_titles": true` (the default), unnamed Claude, Codex, Pi, OmO, OpenCode and Copilot tabs pick up their agent's
+With `"auto_titles": true` (the default), unnamed Claude, Codex, Pi, OmO, OpenCode, Copilot and Antigravity tabs pick up their agent's
 task title automatically, even while the bar is closed. The watcher checks every two seconds and follows
 later task-title changes. Codex's trailing ` | folder` is removed, as are Pi's
 leading `π - ` and trailing ` - folder`, so a Pi tab named `/name Repair login`
@@ -139,7 +139,11 @@ title, a folder name and a title inherited from the shell are ignored. OmO
 tabs are named from the `omo_task` token that the
 [omo-herdr](https://github.com/mastertyko/omo-herdr) extension reports to
 Herdr, never from the `OmO - <activity>` terminal title, which changes with
-every step. Claude's local transcript supplies its generated title or first
+every step. Antigravity CLI (`agy`) leaves the shell's terminal title in
+place, so its tabs are named from the title agy writes to
+`~/.gemini/antigravity-cli/annotations/<conversation id>.pbtxt`; this needs
+Herdr's integration (`herdr integration install antigravity-cli`), which
+reports the conversation id when agy handles a prompt. Claude's local transcript supplies its generated title or first
 human prompt when Herdr has no useful terminal title yet. No extra model
 requests are made.
 
@@ -419,16 +423,16 @@ Optional. Write `config.json` in the plugin config directory
 | `selection_background` | `"auto"` | `"auto"` asks the terminal for its background color, or set `"none"`, a hex value, or a 0-255 ANSI index |
 | `claude_config_dirs` | `[]` | extra Claude config directories (`"~/.claude-work"`) whose transcripts supply tab titles; changes apply without a restart |
 | `tab_renaming_plugins` | `[]` | additional plugin IDs that suppress all automatic tab writes when enabled |
-| `auto_titles` | `true` | Claude, Codex, Pi, OmO, OpenCode and Copilot task titles for unnamed tabs, suppressed by competing naming plugins; `false` opts out |
+| `auto_titles` | `true` | Claude, Codex, Pi, OmO, OpenCode, Copilot and Antigravity task titles for unnamed tabs, suppressed by competing naming plugins; `false` opts out |
 | `lowercase_titles` | `false` | lowercase generated task titles; changes apply without a restart and custom names keep their case |
-| `follow_new_sessions` | `false` | `true` lets the next Claude, Codex, Pi, OmO, OpenCode or Copilot session in a pane take over the task title written for the one before it, after `/clear`, a restart or a new terminal; a tab you renamed stays yours |
+| `follow_new_sessions` | `false` | `true` lets the next Claude, Codex, Pi, OmO, OpenCode, Copilot or Antigravity session in a pane take over the task title written for the one before it, after `/clear`, a restart or a new terminal; a tab you renamed stays yours |
 | `tab_status` | `false` | opt in to agent logos and status glyphs in tab names; `false` restores labels still owned by the watcher |
 | `running_time` | `true` | per-row running time (`47s`, `2h04m`); `false` hides it and skips the per-pane `process_info`/`ps` reading, so the bar opens faster |
 | `scope` | `"all"` | the filter the bar opens with: `"agent"` (`@ agents`), `"pane"` (`% panes`), `"tab"` (`$ shells`), `"blocked"` (`! needs you`), `"action"` (`> actions`, with `"actions": true`) or `"all"`; `backspace` on an empty query still clears it, and `ctrl+u` returns to it |
 | `layout` | `"list"` | `"list"`, the flat alt-tab order, or `"tree"`: rows grouped under their workspace (see [Tree layout](#using-it)); the tree always shows workspace headings, whatever `workspaces` says |
 | `select_current` | `false` | `true` opens with the row you are in selected instead of the one you came from; the order stays the same, so that row follows the recently visited ones |
 | `actions` | `false` | `true` lists plugin actions as rows that run on Enter; `>` filters to them. The list is read once per open |
-| `colors` | `{}` | role → `#rrggbb`, an ANSI name (`bright_blue`), or 0-255. Roles: `accent`, `match`, `text`, `muted`, `blocked`, `working`, `done`, `idle`, `unknown`, plus `agent_claude`, `agent_codex`, `agent_pi`, `agent_grok`, `agent_kimi`, `agent_gemini`, `agent_cursor`, `agent_opencode` |
+| `colors` | `{}` | role → `#rrggbb`, an ANSI name (`bright_blue`), or 0-255. Roles: `accent`, `match`, `text`, `muted`, `blocked`, `working`, `done`, `idle`, `unknown`, plus `agent_claude`, `agent_codex`, `agent_pi`, `agent_grok`, `agent_kimi`, `agent_gemini`, `agent_cursor`, `agent_opencode`, `agent_agy` |
 
 Colors default to plain ANSI, so the bar follows whatever theme your terminal
 already uses. The exception is `muted` — the second tier of text, used for
@@ -461,9 +465,9 @@ action asks. Running times come from `pane.process_info` plus `ps` (the process
 creation time on Windows), one reading per
 pane on the way onto the screen and then ticked locally, because a start time
 never moves. If the socket is unavailable it falls back to the `herdr` CLI.
-Eligible Claude, Codex, Pi, OmO, OpenCode and Copilot tabs are updated through `tab.rename`, with a fresh
+Eligible Claude, Codex, Pi, OmO, OpenCode, Copilot and Antigravity tabs are updated through `tab.rename`, with a fresh
 name and session check before each write. Claude transcript fallback uses a
-bounded local read. `--list` and `--doctor` remain read-only. A singleton
+bounded local read, as does the Antigravity annotation read (64 KiB at most). `--list` and `--doctor` remain read-only. A singleton
 background watcher runs when either tab feature is enabled and checks settings
 and titles every two seconds; popup refreshes only read Herdr's snapshot. Each idle tick makes one snapshot request. Tab status rides
 the same watcher: one `events.subscribe` stream (status changes of agent panes

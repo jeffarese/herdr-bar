@@ -1,6 +1,7 @@
 //! herdr-bar: a Cmd+K style bar for jumping between Herdr tabs, panes, and agents.
 
 mod age;
+mod antigravity;
 mod app;
 mod auto_title;
 mod cli;

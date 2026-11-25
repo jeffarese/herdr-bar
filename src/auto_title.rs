@@ -447,6 +447,9 @@ fn first_truthy<'a>(values: &[&'a Value]) -> &'a Value {
 pub(crate) fn agent_title(agent: &Value, pane: &Value) -> String {
     match agent.get("agent").as_str() {
         Some("omo") => return omo_title(agent, pane),
+        // agy leaves the shell's terminal title in place, so it names nothing;
+        // the title comes from the session's annotation instead.
+        Some("agy") => return String::new(),
         // omo is built on pi, and Herdr reports its panes as either.
         Some("pi") => {
             let title = omo_title(agent, pane);
@@ -681,7 +684,7 @@ pub fn candidates(snapshot: &Value, owned: &Map, follow_new_sessions: bool) -> V
         }
         let session = first_truthy(&[agent.get("agent_session"), pane.get("agent_session")]);
         let kind = agent.get("agent");
-        let Some(kind_text) = kind.as_str().filter(|k| matches!(*k, "claude" | "codex" | "pi" | "omo" | "opencode" | "copilot")) else { continue };
+        let Some(kind_text) = kind.as_str().filter(|k| matches!(*k, "claude" | "codex" | "pi" | "omo" | "opencode" | "copilot" | "agy")) else { continue };
         let suggested = agent_title(agent, pane);
         let mut session_id: Option<String> = None;
         if session.truthy() {
@@ -863,6 +866,10 @@ impl AutoTitles {
             if title.is_empty() && candidate.agent == "claude" {
                 if let Some(session) = &candidate.session {
                     title = self.reader.title(session, str_or_empty(&candidate.cwd));
+                }
+            } else if candidate.agent == "agy" {
+                if let Some(session) = &candidate.session {
+                    title = title_str(&crate::antigravity::title(session));
                 }
             }
             if self.lowercase_titles {
@@ -1587,6 +1594,25 @@ mod tests {
             });
         }
 
+        /// agy reports its conversation id, and keeps the shell's terminal title.
+        fn agy(&self) {
+            self.edit(|s| {
+                let agent = first(s, "agents");
+                agent.insert("agent", Value::str("agy"));
+                agent.insert("terminal_title_stripped", Value::str("me@host: ~/work/app"));
+                if let Some(Value::Dict(session)) = agent.get_mut("agent_session") {
+                    session.insert("agent", Value::str("agy"));
+                }
+            });
+        }
+
+        /// What agy's annotation for `session` says from now on.
+        fn annotate(&self, session: &str, title: &str) {
+            let directory = self.temp.path().join("home").join(".gemini").join("antigravity-cli").join("annotations");
+            std::fs::create_dir_all(&directory).unwrap();
+            std::fs::write(directory.join(format!("{}.pbtxt", session)), format!("title:{}", pyjson::dumps(&Value::str(title), false))).unwrap();
+        }
+
         fn use_state_dir(&mut self) -> PathBuf {
             let state = self.temp.path().join("state");
             self.vars.set("HERDR_PLUGIN_STATE_DIR", &state);
@@ -1748,6 +1774,59 @@ mod tests {
         t.titles.configure(&config(r#"{"follow_new_sessions": true}"#));
         t.apply();
         assert_eq!(t.calls(), vec!["Repair login", "New task"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn agy_title_follows_the_annotation_and_ignores_the_terminal_title() {
+        let mut t = Titles::new();
+        t.agy();
+        t.apply();
+        assert!(t.calls().is_empty());
+        t.annotate(SESSION, "Convert Markdown To HTML Page");
+        t.apply();
+        t.apply();
+        assert_eq!(t.calls(), vec!["Convert Markdown To HTML Page"]);
+        t.annotate(SESSION, "一比一复刻源码修改");
+        t.apply();
+        assert_eq!(t.calls(), vec!["Convert Markdown To HTML Page", "一比一复刻源码修改"]);
+        t.edit(|s| first(s, "tabs").insert("label", Value::str("My task")));
+        t.annotate(SESSION, "New task");
+        t.apply();
+        assert_eq!(t.calls().len(), 2);
+        assert_eq!(t.label(), Value::str("My task"));
+        assert!(!t.reader_called());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn agy_needs_a_valid_session_and_replacement_requires_opt_in() {
+        let mut t = Titles::new();
+        t.agy();
+        t.annotate(SESSION, "Fix login");
+        t.annotate(OTHER_SESSION, "Other task");
+        t.drop_session();
+        t.apply();
+        for session in [
+            json(r#"{"agent": "agy", "kind": "id", "value": "../../etc/passwd"}"#),
+            json(r#"{"agent": "agy", "kind": "path", "value": "/work/session.db"}"#),
+            json(&format!(r#"{{"agent": "claude", "kind": "id", "value": "{}"}}"#, SESSION)),
+        ] {
+            t.agent("agent_session", session);
+            t.apply();
+        }
+        assert!(t.calls().is_empty());
+        t.agent("agent_session", session_value(SESSION));
+        t.agy();
+        t.apply();
+        assert_eq!(t.calls(), vec!["Fix login"]);
+        t.agent("agent_session", session_value(OTHER_SESSION));
+        t.agy();
+        t.apply();
+        assert_eq!(t.calls().len(), 1);
+        t.titles.configure(&config(r#"{"follow_new_sessions": true}"#));
+        t.apply();
+        assert_eq!(t.calls(), vec!["Fix login", "Other task"]);
     }
 
     #[cfg(unix)]

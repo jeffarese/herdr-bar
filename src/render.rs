@@ -223,6 +223,7 @@ pub fn agent_role(agent: Option<&str>) -> &'static str {
         "gemini" => "agent_gemini",
         "cursor" | "cursor-agent" => "agent_cursor",
         "opencode" | "open-code" => "agent_opencode",
+        "agy" => "agent_agy",
         _ => "muted",
     }
 }
@@ -666,6 +667,13 @@ mod tests {
     use crate::fuzzy::{split_query, Term};
     use crate::items::build_items;
     use crate::textutil::{strip_ansi, visible_width};
+
+    #[test]
+    fn agy_has_its_own_color_role() {
+        assert_eq!(agent_role(Some("agy")), "agent_agy");
+        assert_eq!(agent_role(Some("AGY")), "agent_agy");
+        assert!(crate::theme::DEFAULTS.iter().any(|(role, _)| *role == "agent_agy"));
+    }
 
     fn theme() -> Theme {
         Theme::new(None, None, None)

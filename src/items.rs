@@ -449,13 +449,20 @@ pub fn build_items(snapshot: &Value) -> Vec<Item> {
                 } else {
                     Value::Null
                 };
+                // agy leaves the shell's terminal title (`user@host: ~/dir`) in
+                // place: it names no task, so it is no summary either.
+                let terminal_titles = if agent.get("agent").as_str() == Some("agy") {
+                    [&Value::Null, &Value::Null]
+                } else {
+                    [agent.get("terminal_title_stripped"), pane.get("terminal_title_stripped")]
+                };
                 let summary = first(&[
                     pane.get("title"),
                     agent.get("title"),
                     pane.get("label"),
                     &task,
-                    agent.get("terminal_title_stripped"),
-                    pane.get("terminal_title_stripped"),
+                    terminal_titles[0],
+                    terminal_titles[1],
                 ]);
                 let title = first_str(&[&label, &summary, pyos::basename(&cwd), "agent"]);
                 let detail =
@@ -780,6 +787,26 @@ mod tests {
             assert_eq!(item.detail, expected, "terminal title {terminal_title:?}");
             assert_eq!(item.title, "Fix search", "terminal title {terminal_title:?}");
         }
+    }
+
+    #[test]
+    fn agy_rows_ignore_the_shell_terminal_title() {
+        let mut snapshot = pyjson::loads(
+            r#"{"workspaces": [{"workspace_id": "w1", "label": "Tools"}],
+                "tabs": [{"tab_id": "t1", "workspace_id": "w1", "label": "Fix search"}],
+                "panes": [{"pane_id": "p1", "tab_id": "t1", "cwd": "/work/app",
+                           "terminal_title_stripped": "me@host: ~/work/app"}],
+                "agents": [{"pane_id": "p1", "tab_id": "t1", "agent": "agy", "cwd": "/work/app",
+                            "terminal_title_stripped": "me@host: ~/work/app"}]}"#,
+        )
+        .unwrap();
+        let item = by_kind(&build_items(&snapshot), KIND_AGENT).remove(0);
+        assert_eq!(item.title, "Fix search");
+        assert_eq!(item.detail, "");
+        set(&mut snapshot, "tabs", 0, "label", Value::str(""));
+        let item = by_kind(&build_items(&snapshot), KIND_AGENT).remove(0);
+        assert_eq!(item.title, "app");
+        assert_eq!(item.detail, "");
     }
 
     #[test]
