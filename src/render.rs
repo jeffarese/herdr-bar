@@ -39,12 +39,30 @@ pub const MIN_LIST: isize = 46;
 pub const PREVIEW_MIN: isize = 28;
 pub const PREVIEW_MAX: isize = 56;
 
+/// Where a row sits in the `"layout": "tree"` list.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Tree {
+    /// The flat list, or a row outside any workspace.
+    #[default]
+    None,
+    /// A workspace heading its group.
+    Header,
+    /// A row inside a workspace, with more after it.
+    Branch,
+    /// The last row inside a workspace.
+    Last,
+}
+
+pub const TREE_BRANCH: &str = "├─ ";
+pub const TREE_LAST: &str = "└─ ";
+
 /// An item plus where the query landed in it.
 #[derive(Clone, Debug)]
 pub struct Row {
     pub item: usize,
     pub positions: Vec<usize>,
     pub field_positions: BTreeMap<usize, Vec<usize>>,
+    pub tree: Tree,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -244,6 +262,11 @@ pub fn render_row(
     let glyph = Segment::new(glyph_role, format!("{} ", crate::theme::status_glyph(&item.status)));
     let logo = if theme.agent_icons { icons::logo_for(item.agent.as_deref()) } else { None };
     let mut leading = vec![marker];
+    match row.tree {
+        Tree::Branch => leading.push(Segment::new("unknown", TREE_BRANCH)),
+        Tree::Last => leading.push(Segment::new("unknown", TREE_LAST)),
+        Tree::None | Tree::Header => {}
+    }
     if let Some(logo) = logo {
         leading.push(Segment::new(agent_role(item.agent.as_deref()), format!("{}  ", logo)));
     }
@@ -285,7 +308,7 @@ pub fn render_row(
         let marks = field_marks(item, row, word, 0);
         meta.push(chunk(glyph_role, word, &marks));
     }
-    if item.kind == KIND_SPACE {
+    if item.kind == KIND_SPACE && row.tree != Tree::Header {
         meta.push(chunk("muted", "space", &field_marks(item, row, "space", 0)));
     } else if item.kind == KIND_PANE {
         meta.push(chunk("muted", "pane", &field_marks(item, row, "pane", 0)));
@@ -304,7 +327,7 @@ pub fn render_row(
 
     let (title_text, positions, _) = window_positions(&item.title, title_width, &row.positions);
     let title_role = if item.status == "working" { "working" } else { "text" };
-    let mut title_segments = highlight(&title_text, &positions, title_role, selected);
+    let mut title_segments = highlight(&title_text, &positions, title_role, selected || row.tree == Tree::Header);
 
     let mut used = plain_width(&title_segments);
     if !item.detail.is_empty() {
@@ -661,7 +684,7 @@ mod tests {
     }
 
     fn row(positions: &[usize]) -> Row {
-        Row { item: 0, positions: positions.to_vec(), field_positions: BTreeMap::new() }
+        Row { item: 0, positions: positions.to_vec(), field_positions: BTreeMap::new(), tree: Tree::None }
     }
 
     fn draw(theme: &Theme, item: &Item, row: &Row, width: isize, selected: bool, age: Option<f64>) -> String {
@@ -673,7 +696,7 @@ mod tests {
         let terms: Vec<Term> = split_query(query).iter().map(|t| Term::new(t)).collect();
         let mut memo = Memo::default();
         let (_, found) = score_item(&terms, item, &mut memo).expect("query matches");
-        Row { item: 0, positions: found.get(&0).cloned().unwrap_or_default(), field_positions: found }
+        Row { item: 0, positions: found.get(&0).cloned().unwrap_or_default(), field_positions: found, tree: Tree::None }
     }
 
     fn has_age(text: &str) -> bool {

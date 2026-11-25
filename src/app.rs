@@ -12,7 +12,7 @@ use crate::mru::Recents;
 use crate::paint::Painter;
 use crate::pystr;
 use crate::pyjson::Value;
-use crate::render::{self, compute_layout, scrollbar_column, Layout, Row};
+use crate::render::{self, compute_layout, scrollbar_column, Layout, Row, Tree};
 use crate::term::Terminal;
 use crate::textutil::{pad, sanitize};
 use crate::theme::Theme;
@@ -185,6 +185,8 @@ pub struct Bar {
     /// popup owns the screen.
     pub actions: Vec<Item>,
     pub rows: Vec<Row>,
+    /// Workspace headings in `rows` that the filter did not keep itself.
+    tree_headers: usize,
     pub query: String,
     pub cursor: usize,
     pub scope: &'static str,
@@ -230,6 +232,7 @@ impl Bar {
             pane_end: 0,
             actions: Vec::new(),
             rows: Vec::new(),
+            tree_headers: 0,
             query: String::new(),
             cursor: 0,
             scope,
@@ -341,8 +344,102 @@ impl Bar {
     }
 
     pub fn rebuild(&mut self, keep_key: Option<String>) {
-        self.rows = self.filter();
+        let mut keep_key = keep_key.filter(|key| !key.is_empty());
+        let rows = self.filter();
+        if self.tree_layout() {
+            // The row the flat list would put first: the best match, or with
+            // no query the place you came from. The tree moves it, so the
+            // selection follows it there instead of landing on a heading --
+            // also when a refresh takes away the row that was selected.
+            let preferred = rows.first().map(|row| row.item);
+            let (rows, added) = self.tree(rows);
+            self.rows = rows;
+            self.tree_headers = added;
+            let lost = match &keep_key {
+                Some(key) => !self.rows.iter().any(|row| &self.pool[row.item].key == key),
+                None => self.selected == 0,
+            };
+            if lost {
+                keep_key = None;
+                self.selected = preferred.and_then(|item| self.rows.iter().position(|row| row.item == item)).unwrap_or(0);
+            }
+        } else {
+            self.rows = rows;
+            self.tree_headers = 0;
+        }
         self.reselect(keep_key);
+    }
+
+    fn tree_layout(&self) -> bool {
+        self.config.layout == "tree" && self.scope != "action"
+    }
+
+    /// `rows` grouped under their workspaces, with how many headings were
+    /// added that the filter had not kept.
+    ///
+    /// Groups follow Herdr's workspace order with no query, and their best
+    /// match with one; inside a group rows keep Herdr's tab order. Every
+    /// group with a row is headed by its workspace, matched or not, and rows
+    /// outside any workspace (plugin actions) follow the groups.
+    fn tree(&self, rows: Vec<Row>) -> (Vec<Row>, usize) {
+        struct Group {
+            workspace: String,
+            header: Option<Row>,
+            children: Vec<Row>,
+        }
+        let headers: Vec<usize> = (0..self.item_count).filter(|&i| self.pool[i].kind == KIND_SPACE).collect();
+        let header_of = |workspace: &str| headers.iter().position(|&i| self.pool[i].workspace_id == workspace);
+        let mut groups: Vec<Group> = Vec::new();
+        let mut loose: Vec<Row> = Vec::new();
+        for row in rows {
+            let item = &self.pool[row.item];
+            if item.workspace_id.is_empty() || item.kind == KIND_ACTION {
+                loose.push(row);
+                continue;
+            }
+            let at = match groups.iter().position(|g| g.workspace == item.workspace_id) {
+                Some(at) => at,
+                None => {
+                    groups.push(Group { workspace: item.workspace_id.clone(), header: None, children: Vec::new() });
+                    groups.len() - 1
+                }
+            };
+            if item.kind == KIND_SPACE {
+                groups[at].header = Some(row);
+            } else {
+                groups[at].children.push(row);
+            }
+        }
+        if split_query(&self.query).is_empty() {
+            groups.sort_by_key(|g| header_of(&g.workspace).unwrap_or(usize::MAX));
+        }
+        let mut added = 0;
+        let mut out = Vec::new();
+        for mut group in groups {
+            let header = group.header.take().or_else(|| {
+                let index = headers[header_of(&group.workspace)?];
+                added += 1;
+                Some(Row { item: index, positions: Vec::new(), field_positions: BTreeMap::new(), tree: Tree::None })
+            });
+            let pool = &self.pool;
+            group.children.sort_by_key(|row| (pool[row.item].tab_number.unwrap_or(i128::MAX), pool[row.item].kind == KIND_PANE, row.item));
+            let nested = header.is_some();
+            if let Some(mut header) = header {
+                header.tree = Tree::Header;
+                out.push(header);
+            }
+            let count = group.children.len();
+            for (index, mut row) in group.children.into_iter().enumerate() {
+                row.tree = match (nested, index + 1 == count) {
+                    (false, _) => Tree::None,
+                    (true, false) => Tree::Branch,
+                    (true, true) => Tree::Last,
+                };
+                out.push(row);
+            }
+        }
+        out.extend(loose);
+        (out, added)
     }
 
     fn reselect(&mut self, keep_key: Option<String>) {
@@ -380,7 +477,7 @@ impl Bar {
             return self
                 .resting_order(&candidates)
                 .into_iter()
-                .map(|item| Row { item, positions: Vec::new(), field_positions: BTreeMap::new() })
+                .map(|item| Row { item, positions: Vec::new(), field_positions: BTreeMap::new(), tree: Tree::None })
                 .collect();
         }
         let terms: Vec<Term> = terms.iter().map(|t| Term::new(t)).collect();
@@ -398,7 +495,7 @@ impl Bar {
                 // On a tie the place beats the action: Enter should go somewhere.
                 scored.push((
                     (-score, item.kind == KIND_ACTION, rank, item.status_rank(), char_len(&item.title)),
-                    Row { item: index, positions, field_positions: by_field },
+                    Row { item: index, positions, field_positions: by_field, tree: Tree::None },
                 ));
             }
             scored
@@ -1062,7 +1159,8 @@ impl Bar {
         }
         let marks = scrollbar_column(self.rows.len() as isize, layout.list_height, self.offset as isize, layout.list_height);
         let content_width = layout.list_width - if marks.is_empty() { 0 } else { 1 };
-        let show_workspace = self.workspace_count > 1;
+        // In the tree the heading already names the workspace.
+        let show_workspace = self.workspace_count > 1 && !self.tree_layout();
         let mut out = Vec::new();
         for index in 0..layout.list_height.max(0) {
             let position = self.offset + index as usize;
@@ -1124,7 +1222,8 @@ impl Bar {
             "all" => self.pool.len(),
             _ => self.items().len(),
         };
-        let shown = self.rows.len();
+        // Headings the tree adds to give a match its place are not matches.
+        let shown = self.rows.len() - self.tree_headers;
         let counter = if shown != total { format!("{}/{}", shown, total) } else { total.to_string() };
         render::render_footer(&self.theme, width, &hints, &counter)
     }
@@ -1822,6 +1921,163 @@ mod tests {
         let t = bar_with(snapshot, config, Recents::new(None));
         assert!(t.bar.current_key.is_none());
         assert_eq!(t.bar.selected, 0);
+    }
+
+    // -- TreeTest ---------------------------------------------------------------
+
+    #[cfg(unix)]
+    fn tree_bar() -> T {
+        bar_with(testutil::snapshot(), config_of(&[("layout", Value::str("tree"))]), Recents::new(None))
+    }
+
+    /// Each row as `(tree, kind, workspace)`.
+    #[cfg(unix)]
+    fn shape(bar: &Bar) -> Vec<(Tree, &'static str, String)> {
+        bar.rows.iter().map(|row| (row.tree, bar.pool[row.item].kind, bar.pool[row.item].workspace_id.clone())).collect()
+    }
+
+    /// Every heading is followed by its own workspace's rows, the last one
+    /// closing the group; nothing else is nested.
+    #[cfg(unix)]
+    fn assert_well_formed(bar: &Bar) {
+        let rows = shape(bar);
+        let mut open: Option<String> = None;
+        for (index, (tree, kind, workspace)) in rows.iter().enumerate() {
+            match tree {
+                Tree::Header => {
+                    assert_eq!(*kind, KIND_SPACE, "row {index}");
+                    assert!(open.is_none(), "row {index}: heading inside a group");
+                    open = Some(workspace.clone());
+                }
+                Tree::Branch | Tree::Last => {
+                    assert_eq!(open.as_ref(), Some(workspace), "row {index}");
+                    assert_ne!(*kind, KIND_SPACE, "row {index}");
+                    if *tree == Tree::Last {
+                        open = None;
+                    }
+                }
+                Tree::None => assert!(open.is_none(), "row {index}: flat row inside a group"),
+            }
+        }
+        assert!(open.is_none(), "last group left open");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn tree_groups_rows_under_workspaces_in_herdr_order() {
+        let t = tree_bar();
+        assert_well_formed(&t.bar);
+        let headers: Vec<String> =
+            shape(&t.bar).into_iter().filter(|(tree, _, _)| *tree == Tree::Header).map(|(_, _, w)| w).collect();
+        assert_eq!(headers, vec!["w1", "w2"]);
+        // Inside a group, Herdr's tab order.
+        let numbers: Vec<i128> = t
+            .bar
+            .rows
+            .iter()
+            .map(|row| &t.bar.pool[row.item])
+            .filter(|item| item.workspace_id == "w1" && item.kind != KIND_SPACE)
+            .filter_map(|item| item.tab_number)
+            .collect();
+        let mut sorted = numbers.clone();
+        sorted.sort();
+        assert_eq!(numbers, sorted);
+        assert_eq!(t.bar.tree_headers, 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn tree_opens_on_the_row_the_list_would() {
+        let recents = || {
+            let mut recents = Recents::new(None);
+            recents.touch("w2:p2", "");
+            recents
+        };
+        let list = bar_with(testutil::snapshot(), Config::default(), recents());
+        let expected = list.bar.selected_item().key.clone();
+        drop(list);
+        let t = bar_with(testutil::snapshot(), config_of(&[("layout", Value::str("tree"))]), recents());
+        assert_eq!(t.bar.selected_item().key, expected);
+        assert_eq!(expected, "w2:p2");
+        assert_ne!(t.bar.rows[t.bar.selected].tree, Tree::Header);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn tree_search_selects_the_best_match_under_its_heading() {
+        let mut t = tree_bar();
+        t.bar.set_query("retry".into(), None);
+        assert_well_formed(&t.bar);
+        assert_eq!(t.bar.selected_item().title, "retry queue backoff");
+        let first = &t.bar.rows[0];
+        assert_eq!(first.tree, Tree::Header);
+        assert_eq!(t.bar.pool[first.item].workspace_id, "w2");
+        // The heading was added for context, so it does not count as a match.
+        assert_eq!(t.bar.tree_headers, 1);
+        assert!(t.bar.footer(80).contains(&format!("{}/", t.bar.rows.len() - 1)));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn tree_keeps_headings_when_filtered_to_agents() {
+        let mut t = tree_bar();
+        t.bar.insert("@", false);
+        assert_eq!(t.bar.scope, "agent");
+        assert_well_formed(&t.bar);
+        let kinds: Vec<&str> = kinds(&t.bar);
+        assert_eq!(kinds.iter().filter(|k| **k == KIND_SPACE).count(), 2);
+        assert!(kinds.iter().all(|k| *k == KIND_SPACE || *k == KIND_AGENT));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn list_layout_has_no_tree() {
+        let t = bar();
+        assert!(t.bar.rows.iter().all(|row| row.tree == Tree::None));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn tree_rows_draw_branches_and_bare_headings() {
+        let mut t = tree_bar();
+        let layout = compute_layout(100, 30, false);
+        let lines: Vec<String> = t.bar.list_rows(&layout).iter().map(|line| crate::textutil::strip_ansi(line)).collect();
+        let header = lines.iter().find(|line| line.contains("pacebeats")).unwrap();
+        assert!(!header.contains("├─") && !header.contains("space"), "{header}");
+        assert!(lines.iter().any(|line| line.contains("├─ ")));
+        assert_eq!(lines.iter().filter(|line| line.contains("└─ ")).count(), 2);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn tree_selection_falls_back_to_the_lists_row_when_its_row_goes() {
+        // w2's last tab, its pane and its agent close.
+        let mut snapshot = testutil::snapshot();
+        for (list, field, id) in [("tabs", "tab_id", "w2:t2"), ("panes", "pane_id", "w2:p2"), ("agents", "pane_id", "w2:p2")] {
+            if let Some(Value::List(entries)) = snapshot.as_dict_mut().and_then(|s| s.get_mut(list)) {
+                entries.retain(|entry| entry.get(field).as_str() != Some(id));
+            }
+        }
+        let list = bar_with(snapshot.clone(), Config::default(), Recents::new(None));
+        let expected = list.bar.selected_item().key.clone();
+        drop(list);
+        let mut t = tree_bar();
+        t.bar.selected = t.bar.rows.iter().position(|row| t.bar.pool[row.item].key == "w2:p2").unwrap();
+        t.bar.apply(&snapshot, false);
+        assert_eq!(t.bar.selected_item().key, expected);
+        assert_ne!(t.bar.rows[t.bar.selected].tree, Tree::Header);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn tree_rows_keep_the_list_width() {
+        let mut t = tree_bar();
+        for width in (40..140).step_by(7) {
+            let layout = compute_layout(width, 30, false);
+            let widths: Vec<usize> = t.bar.list_rows(&layout).iter().take(t.bar.rows.len()).map(|line| crate::textutil::visible_width(line)).collect();
+            assert!(widths.iter().all(|w| *w == widths[0]), "width {width}: {widths:?}");
+            assert!(t.bar.rows.iter().any(|row| row.tree == Tree::Last));
+        }
     }
 
     // -- ScopeTest --------------------------------------------------------------

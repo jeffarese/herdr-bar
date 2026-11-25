@@ -371,6 +371,28 @@ text they landed in — the tab name, the summary, the directory, the agent — 
 subsequence scattered across a sentence still reads as one, and a row that
 matched on something off screen simply shows no highlight.
 
+**Tree layout.** With `"layout": "tree"`, rows are grouped under their
+workspace, the way Herdr's own Go to picker shows them, and the preview stays:
+
+```
+  ◐ pacebeats                                          current · working
+  ├─ · server                                                  pacebeats
+  ├─ ◐ Redesign week loading screen               pacebeats · claude · working
+  └─ · logs                                                    pacebeats
+  ◉ erestor                                    feat/retry-queue · needs you
+▌ ├─ ◉ retry queue backoff                       erestor · codex · needs you
+  └─ ✓ migrations                                erestor · gemini · idle
+```
+
+Groups follow Herdr's workspace order with no query and their best match with
+one; inside a group rows keep Herdr's tab order. A group is headed by its
+workspace whether or not the heading matched, and the counter leaves those
+headings out. The bar still opens on the row the list would put first — the
+place you came from, or the best match — so open-then-Enter and type-then-Enter
+work as they do in the list. Selecting a heading focuses that workspace. With a
+single workspace there are no headings and the rows stay flat; plugin actions
+follow the groups.
+
 ## Configuring
 
 Optional. Write `config.json` in the plugin config directory
@@ -407,6 +429,7 @@ Optional. Write `config.json` in the plugin config directory
 | `tab_status` | `false` | opt in to agent logos and status glyphs in tab names; `false` restores labels still owned by the watcher |
 | `running_time` | `true` | per-row running time (`47s`, `2h04m`); `false` hides it and skips the per-pane `process_info`/`ps` reading, so the bar opens faster |
 | `scope` | `"all"` | the filter the bar opens with: `"agent"` (`@ agents`), `"pane"` (`% panes`), `"tab"` (`$ shells`), `"blocked"` (`! needs you`), `"action"` (`> actions`, with `"actions": true`) or `"all"`; `backspace` on an empty query still clears it, and `ctrl+u` returns to it |
+| `layout` | `"list"` | `"list"`, the flat alt-tab order, or `"tree"`: rows grouped under their workspace (see [Tree layout](#using-it)); the tree always shows workspace headings, whatever `workspaces` says |
 | `select_current` | `false` | `true` opens with the row you are in selected instead of the one you came from; the order stays the same, so that row follows the recently visited ones |
 | `actions` | `false` | `true` lists plugin actions as rows that run on Enter; `>` filters to them. The list is read once per open |
 | `colors` | `{}` | role → `#rrggbb`, an ANSI name (`bright_blue`), or 0-255. Roles: `accent`, `match`, `text`, `muted`, `blocked`, `working`, `done`, `idle`, `unknown`, plus `agent_claude`, `agent_codex`, `agent_pi`, `agent_grok`, `agent_kimi`, `agent_gemini`, `agent_cursor`, `agent_opencode`, `agent_agy` |

@@ -178,7 +178,7 @@ mod tests {
     }
 
     fn row(field_positions: BTreeMap<usize, Vec<usize>>) -> Row {
-        Row { item: 0, positions: Vec::new(), field_positions }
+        Row { item: 0, positions: Vec::new(), field_positions, tree: crate::render::Tree::None }
     }
 
     #[test]
